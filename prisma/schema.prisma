@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Doctor {
+  id           String        @id @default(cuid())
+  name         String
+  specialty    String
+  bodyParts    String[]
+  bio          String
+  createdAt    DateTime      @default(now())
+  slots        Slot[]
+  appointments Appointment[]
+}
+
+model Slot {
+  id          String       @id @default(cuid())
+  doctorId    String
+  doctor      Doctor       @relation(fields: [doctorId], references: [id])
+  date        String
+  time        String
+  available   Boolean      @default(true)
+  appointment Appointment?
+
+  @@unique([doctorId, date, time])
+}
+
+model Patient {
+  id           String        @id @default(cuid())
+  firstName    String
+  lastName     String
+  dob          String
+  phone        String
+  email        String        @unique
+  createdAt    DateTime      @default(now())
+  appointments Appointment[]
+  sessions     Session[]
+}
+
+model Appointment {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id])
+  slotId    String   @unique
+  slot      Slot     @relation(fields: [slotId], references: [id])
+  status    String   @default("confirmed")
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  patientId String?
+  patient   Patient? @relation(fields: [patientId], references: [id])
+  step      String   @default("greeting")
+  context   Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
