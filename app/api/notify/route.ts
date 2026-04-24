@@ -4,18 +4,19 @@ import { formatDisplay } from "@/lib/dateUtils";
 import { PRACTICE_INFO } from "@/lib/doctors";
 
 export async function POST(req: NextRequest) {
-  const { patient, doctor, slot, type, preferredTime } = await req.json() as {
+  const { patient, doctor, slot, type, preferredTime, availableSlots } = await req.json() as {
     patient: PatientInfo;
     doctor: Doctor;
     slot: AvailabilitySlot;
     type?: string;
     preferredTime?: string;
+    availableSlots?: { date: string; time: string }[];
   };
 
   if (type === "slot_unavailable") {
     const results = await Promise.allSettled([
-      sendUnavailableEmail(patient, preferredTime ?? "your requested time"),
-      sendUnavailableSMS(patient, preferredTime ?? "your requested time"),
+      sendUnavailableEmail(patient, preferredTime ?? "your requested time", availableSlots ?? []),
+      sendUnavailableSMS(patient, preferredTime ?? "your requested time", availableSlots ?? []),
     ]);
     console.log("Unavailable notify results:", {
       toEmail: patient.email,
@@ -90,7 +91,7 @@ async function sendSMS(patient: PatientInfo, doctor: Doctor, appointmentTime: st
   });
 }
 
-async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string) {
+async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string, availableSlots: { date: string; time: string }[]) {
   if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return;
 
   const nodemailer = (await import("nodemailer")).default;
@@ -107,7 +108,11 @@ async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string)
       <h2>We're sorry, that time isn't available</h2>
       <p>Hello ${patient.firstName},</p>
       <p>Unfortunately, <strong>${preferredTime}</strong> is not currently available.</p>
-      <p>Please contact us to find a time that works for you:</p>
+      ${availableSlots.length > 0 ? `
+      <p>Here are our next available times:</p>
+      <ul>${availableSlots.map(s => `<li>${formatDisplay(s.date, s.time)}</li>`).join("")}</ul>
+      <p>Please call us to book one of these times, or let us know what works for you:</p>
+      ` : `<p>Please contact us to find a time that works for you:</p>`}
       <ul>
         <li><strong>Phone:</strong> ${PRACTICE_INFO.phone}</li>
         <li><strong>Address:</strong> ${PRACTICE_INFO.address}</li>
@@ -119,14 +124,16 @@ async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string)
   });
 }
 
-async function sendUnavailableSMS(patient: PatientInfo, preferredTime: string) {
+async function sendUnavailableSMS(patient: PatientInfo, preferredTime: string, availableSlots: { date: string; time: string }[]) {
   if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return;
 
   const twilio = (await import("twilio")).default;
   const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
+  const hasSlots = availableSlots.length > 0;
+
   await client.messages.create({
-    body: `${PRACTICE_INFO.name}: Sorry, ${preferredTime} is not available. Please call us at ${PRACTICE_INFO.phone} to reschedule.`,
+    body: `${PRACTICE_INFO.name}: Sorry, ${preferredTime} is not available.${hasSlots ? " Check your email for available times." : ""} Call us at ${PRACTICE_INFO.phone}.`,
     from: process.env.TWILIO_PHONE_NUMBER,
     to: `+1${patient.phone.replace(/\D/g, "")}`,
   });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { matchDoctorByReason, getAvailableSlots } from "@/lib/doctorsDb";
 import { prisma } from "@/lib/db";
+import { formatDisplay } from "@/lib/dateUtils";
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,11 +37,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const formattedSlots = slots.map((s, i) => `${i + 1}. ${formatDisplay(s.date, s.time)}`);
     return NextResponse.json({
       doctor: doctor.name,
       specialty: doctor.specialty,
-      slots: slots.map((s, i) => `${i + 1}. ${s.date} at ${s.time}`),
-      message: `Matched with ${doctor.name} (${doctor.specialty}). Available slots: ${slots.map((s, i) => `${i + 1}. ${s.date} at ${s.time}`).join(", ")}`,
+      slots: formattedSlots,
+      message: `Matched with ${doctor.name} (${doctor.specialty}). Available slots: ${formattedSlots.join(", ")}`,
     });
   } catch (error) {
     console.error("Slots error:", error);
