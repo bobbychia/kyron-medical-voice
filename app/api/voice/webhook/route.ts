@@ -65,6 +65,49 @@ export async function POST(req: NextRequest) {
 
       const context = (dbSession.context as any) ?? {};
 
+      // Patient gave a preferred time but it wasn't in offered slots
+      if (!ai_result?.appointmentBooked && ai_result?.preferredDate && ai_result?.preferredTime) {
+        const normalizedPref = normalizeTime(ai_result.preferredTime);
+        const prefSlot = await prisma.slot.findFirst({
+          where: { date: ai_result.preferredDate, time: normalizedPref, available: true },
+          include: { doctor: true },
+        });
+
+        const freshForPref = await prisma.session.findUnique({ where: { id: sessionId } });
+        const prefCtx = (freshForPref?.context as any) ?? context;
+
+        if (prefSlot && prefCtx.patient?.email) {
+          // Slot exists — book it
+          const doctor = {
+            id: prefSlot.doctor.id, name: prefSlot.doctor.name,
+            specialty: prefSlot.doctor.specialty, bodyParts: prefSlot.doctor.bodyParts,
+            bio: prefSlot.doctor.bio, availability: [],
+          };
+          await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/book`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              patient: prefCtx.patient, doctor,
+              slot: { date: ai_result.preferredDate, time: normalizedPref, available: true },
+              reason: prefCtx.patient?.reason ?? "",
+            }),
+          }).catch(console.error);
+          console.log("Preferred slot booked for:", prefCtx.patient.email);
+        } else if (prefCtx.patient?.email) {
+          // Slot not available — notify patient
+          const preferredDisplay = `${ai_result.preferredDate} at ${ai_result.preferredTime}`;
+          await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              patient: prefCtx.patient, doctor: {}, slot: {},
+              type: "slot_unavailable", preferredTime: preferredDisplay,
+            }),
+          }).catch(console.error);
+          console.log("Unavailable slot notified for:", prefCtx.patient.email);
+        }
+      }
+
       if (ai_result?.appointmentBooked && ai_result.selectedDate && ai_result.selectedTime) {
         const normalizedTime = normalizeTime(ai_result.selectedTime);
         context.selectedSlot = { date: ai_result.selectedDate, time: normalizedTime, available: true };
@@ -93,9 +136,9 @@ export async function POST(req: NextRequest) {
         // Re-read DB: transcript may have already saved email
         const freshForEmail = await prisma.session.findUnique({ where: { id: sessionId } });
         const emailCtx = (freshForEmail?.context as any) ?? context;
-        if (emailCtx.patient?.email && emailCtx.matchedDoctor && emailCtx.selectedSlot) {
-          // Full booking flow: mark slot unavailable + send email
-          await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/book`, {
+        if (emailCtx.patient?.email && emailCtx.matchedDoctor && emailCtx.selectedSlot && !emailCtx.bookingConfirmed) {
+          // Full booking flow: mark slot unavailable + send notifications
+          const bookRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/book`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -105,7 +148,11 @@ export async function POST(req: NextRequest) {
               reason: emailCtx.patient?.reason ?? "",
             }),
           }).catch(console.error);
-          console.log("Booking + email sent (from extractor) to:", emailCtx.patient.email);
+          if (bookRes && (bookRes as Response).ok) {
+            emailCtx.bookingConfirmed = true;
+            await prisma.session.update({ where: { id: sessionId }, data: { context: emailCtx } });
+          }
+          console.log("Booking + notifications sent (from extractor) to:", emailCtx.patient.email);
         } else {
           console.log("No email yet, dial.transcript will send it");
         }
@@ -151,18 +198,20 @@ export async function POST(req: NextRequest) {
       if (context.patient?.email) freshCtx.patient = { ...freshCtx.patient, email: context.patient.email };
       if (context.matchedDoctor) freshCtx.matchedDoctor = context.matchedDoctor;
 
-      // Send email if appointment was booked and we have all required info
-      if (freshCtx.step === "booked" && freshCtx.patient?.email && freshCtx.matchedDoctor && freshCtx.selectedSlot) {
-        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notify`, {
+      // If booked but /api/book hasn't been called yet (email arrived after extractor),
+      // call /api/book now to mark slot and send notifications
+      if (freshCtx.step === "booked" && freshCtx.patient?.email && freshCtx.matchedDoctor && freshCtx.selectedSlot && !freshCtx.bookingConfirmed) {
+        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/book`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             patient: freshCtx.patient,
             doctor: freshCtx.matchedDoctor,
             slot: freshCtx.selectedSlot,
+            reason: freshCtx.patient?.reason ?? "",
           }),
         }).catch(console.error);
-        console.log("Confirmation email sent to:", freshCtx.patient.email);
+        console.log("Booking triggered from transcript for:", freshCtx.patient.email);
       }
     }
 

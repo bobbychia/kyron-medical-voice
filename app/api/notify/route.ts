@@ -4,11 +4,26 @@ import { formatDisplay } from "@/lib/dateUtils";
 import { PRACTICE_INFO } from "@/lib/doctors";
 
 export async function POST(req: NextRequest) {
-  const { patient, doctor, slot } = await req.json() as {
+  const { patient, doctor, slot, type, preferredTime } = await req.json() as {
     patient: PatientInfo;
     doctor: Doctor;
     slot: AvailabilitySlot;
+    type?: string;
+    preferredTime?: string;
   };
+
+  if (type === "slot_unavailable") {
+    const results = await Promise.allSettled([
+      sendUnavailableEmail(patient, preferredTime ?? "your requested time"),
+      sendUnavailableSMS(patient, preferredTime ?? "your requested time"),
+    ]);
+    console.log("Unavailable notify results:", {
+      toEmail: patient.email,
+      email: results[0].status,
+      sms: results[1].status,
+    });
+    return NextResponse.json({ email: results[0].status, sms: results[1].status });
+  }
 
   const appointmentTime = formatDisplay(slot.date, slot.time);
 
@@ -70,6 +85,48 @@ async function sendSMS(patient: PatientInfo, doctor: Doctor, appointmentTime: st
 
   await client.messages.create({
     body: `${PRACTICE_INFO.name}: Your appointment with ${doctor.name} is confirmed for ${appointmentTime}. Questions? Call ${PRACTICE_INFO.phone}.`,
+    from: process.env.TWILIO_PHONE_NUMBER,
+    to: `+1${patient.phone.replace(/\D/g, "")}`,
+  });
+}
+
+async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string) {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return;
+
+  const nodemailer = (await import("nodemailer")).default;
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+  });
+
+  await transporter.sendMail({
+    from: `"${PRACTICE_INFO.name}" <${process.env.GMAIL_USER}>`,
+    to: patient.email,
+    subject: `Appointment Request Update — ${PRACTICE_INFO.name}`,
+    html: `
+      <h2>We're sorry, that time isn't available</h2>
+      <p>Hello ${patient.firstName},</p>
+      <p>Unfortunately, <strong>${preferredTime}</strong> is not currently available.</p>
+      <p>Please contact us to find a time that works for you:</p>
+      <ul>
+        <li><strong>Phone:</strong> ${PRACTICE_INFO.phone}</li>
+        <li><strong>Address:</strong> ${PRACTICE_INFO.address}</li>
+        <li><strong>Hours:</strong> ${PRACTICE_INFO.hours}</li>
+      </ul>
+      <p>We look forward to seeing you soon!</p>
+      <p>— ${PRACTICE_INFO.name}</p>
+    `,
+  });
+}
+
+async function sendUnavailableSMS(patient: PatientInfo, preferredTime: string) {
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) return;
+
+  const twilio = (await import("twilio")).default;
+  const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
+  await client.messages.create({
+    body: `${PRACTICE_INFO.name}: Sorry, ${preferredTime} is not available. Please call us at ${PRACTICE_INFO.phone} to reschedule.`,
     from: process.env.TWILIO_PHONE_NUMBER,
     to: `+1${patient.phone.replace(/\D/g, "")}`,
   });
