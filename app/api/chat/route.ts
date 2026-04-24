@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAI } from "@/lib/ai/router";
 import { buildSystemPrompt } from "@/lib/prompts";
-import { matchDoctorByReason, getAvailableSlots } from "@/lib/doctorsDb";
+import { matchDoctorByReason, getAvailableSlots, checkSlotAvailable } from "@/lib/doctorsDb";
 import { ConversationState, AIModel, Message } from "@/types";
 import { prisma } from "@/lib/db";
 
@@ -164,12 +164,16 @@ async function updateState(state: ConversationState, message: string): Promise<C
     }
 
     case "request_preferred_time": {
-      // Patient said a preferred time — store it and check availability
-      const dateMatch = message.match(/(\w+ \d{1,2}|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})/i);
-      const timeMatch = message.match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/i);
-      if (dateMatch || timeMatch) {
-        (state as any).preferredTimeRequest = message;
-        state.step = "check_preferred_slot";
+      const parsed = parseDateTimeFromMessage(message);
+      if (parsed && state.matchedDoctor) {
+        const slot = await checkSlotAvailable(state.matchedDoctor.id, parsed.date, parsed.time);
+        if (slot) {
+          state.selectedSlot = slot;
+          state.step = "confirm_booking";
+        } else {
+          (state as any).preferredTimeRequest = message;
+          (state as any).preferredTimeNotFound = true;
+        }
       }
       break;
     }
@@ -199,6 +203,29 @@ async function updateState(state: ConversationState, message: string): Promise<C
   return { ...state };
 }
 
+function parseDateTimeFromMessage(message: string): { date: string; time: string } | null {
+  const timeMatch = message.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if (!timeMatch) return null;
+
+  let hours = parseInt(timeMatch[1]);
+  const minutes = parseInt(timeMatch[2] ?? "0");
+  const meridiem = timeMatch[3].toLowerCase();
+  if (meridiem === "pm" && hours !== 12) hours += 12;
+  if (meridiem === "am" && hours === 12) hours = 0;
+  const timeStr = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+
+  const cleaned = message
+    .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday),?\s*/gi, "")
+    .replace(/\s+at\s+\d.*$/i, "")
+    .trim();
+  const dateAttempt = new Date(cleaned);
+  if (!isNaN(dateAttempt.getTime())) {
+    const dateStr = dateAttempt.toISOString().split("T")[0];
+    return { date: dateStr, time: timeStr };
+  }
+  return null;
+}
+
 function getHardcodedReply(state: ConversationState): string | null {
   const { step, patient } = state;
 
@@ -215,6 +242,12 @@ function getHardcodedReply(state: ConversationState): string | null {
       return "Thank you! Could you briefly describe the reason for your visit today?";
     case "match_doctor":
       return "I'm sorry, our practice doesn't currently treat that condition. Is there anything else I can help you with?";
+    case "request_preferred_time":
+      if ((state as any).preferredTimeNotFound) {
+        (state as any).preferredTimeNotFound = false;
+        return "I'm sorry, we don't have availability at that exact time. Could you suggest another date or time that works for you?";
+      }
+      return "What date and time would work best for you? (e.g. June 10 at 2:00 PM)";
     default:
       return null; // use AI for show_slots, confirm_booking, booked, general
   }

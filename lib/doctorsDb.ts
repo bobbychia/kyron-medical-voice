@@ -54,6 +54,14 @@ export async function bookSlot(doctorId: string, date: string, time: string): Pr
   return true;
 }
 
+export async function checkSlotAvailable(doctorId: string, date: string, time: string): Promise<AvailabilitySlot | null> {
+  const slot = await prisma.slot.findFirst({
+    where: { doctorId, date, time, available: true },
+  });
+  if (!slot) return null;
+  return { date: slot.date, time: slot.time, available: slot.available };
+}
+
 export async function getAllDoctors(): Promise<Doctor[]> {
   const doctors = await prisma.doctor.findMany();
   return doctors.map((doc) => ({
