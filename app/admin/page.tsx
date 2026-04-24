@@ -47,7 +47,7 @@ export default function AdminDashboard() {
     const res = await fetch("/api/admin");
     const data = await res.json();
     setDoctors(data);
-    if (!selectedDoctor && data.length > 0) setSelectedDoctor(data[0].id);
+    setSelectedDoctor(prev => prev ?? (data.length > 0 ? data[0].id : null));
     setLoading(false);
   };
 

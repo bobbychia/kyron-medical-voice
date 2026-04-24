@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   const results = await Promise.allSettled([
     sendEmail(patient, doctor, appointmentTime),
-    sendSMS(patient, doctor, appointmentTime),
+    (patient as any).smsConsent ? sendSMS(patient, doctor, appointmentTime) : Promise.resolve(),
   ]);
 
   console.log("Notify results:", {

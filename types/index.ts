@@ -50,6 +50,8 @@ export type ConversationStep =
   | "show_slots"
   | "confirm_booking"
   | "booked"
+  | "request_preferred_time"
+  | "check_preferred_slot"
   | "general";
 
 export interface ConversationState {
@@ -58,4 +60,5 @@ export interface ConversationState {
   matchedDoctor?: Doctor;
   selectedSlot?: AvailabilitySlot;
   sessionId: string;
+  slotOffset?: number;
 }

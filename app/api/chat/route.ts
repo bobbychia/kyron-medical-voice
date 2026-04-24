@@ -9,11 +9,12 @@ const sessions = new Map<string, ConversationState>();
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, sessionId, model = "claude", history = [] } = await req.json() as {
+    const { message, sessionId, model = "claude", history = [], smsConsent } = await req.json() as {
       message: string;
       sessionId: string;
       model: AIModel;
       history: Message[];
+      smsConsent?: boolean;
     };
 
     let state: ConversationState = sessions.get(sessionId) ?? null!;
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
 
     state = await updateState(state, message);
 
+
     // For intake steps, use hardcoded replies instead of AI
     const hardcodedReply = getHardcodedReply(state);
     let reply: string;
@@ -41,11 +43,14 @@ export async function POST(req: NextRequest) {
         content: m.content,
       }));
       aiMessages.push({ role: "user", content: message });
-      const slots = state.matchedDoctor ? await getAvailableSlots(state.matchedDoctor.id) : undefined;
-      const systemPrompt = buildSystemPrompt(state, slots);
+      const offset = state.slotOffset ?? 0;
+      const slots = state.matchedDoctor ? await getAvailableSlots(state.matchedDoctor.id, offset + 3) : undefined;
+      const visibleSlots = slots ? slots.slice(offset) : undefined;
+      const systemPrompt = buildSystemPrompt(state, visibleSlots);
       reply = await callAI(model, aiMessages, systemPrompt);
     }
 
+    if (smsConsent !== undefined) (state.patient as any).smsConsent = smsConsent;
     sessions.set(sessionId, state);
 
     // Persist session to DB
@@ -55,9 +60,9 @@ export async function POST(req: NextRequest) {
       create: { id: sessionId, step: state.step, context: state as any },
     });
 
-    const availableSlots = state.matchedDoctor
-      ? await getAvailableSlots(state.matchedDoctor.id)
-      : undefined;
+    const slotOff = state.slotOffset ?? 0;
+    const allFetched = state.matchedDoctor ? await getAvailableSlots(state.matchedDoctor.id, slotOff + 3) : undefined;
+    const availableSlots = allFetched ? allFetched.slice(slotOff) : undefined;
 
     return NextResponse.json({
       reply,
@@ -134,12 +139,46 @@ async function updateState(state: ConversationState, message: string): Promise<C
 
     case "show_slots": {
       const slotIndex = parseInt(lower) - 1;
+      const wantsMore = /more|another|different|other|next|else/i.test(lower);
+
       if (!isNaN(slotIndex) && state.matchedDoctor) {
-        const slots = await getAvailableSlots(state.matchedDoctor.id);
-        if (slots[slotIndex]) {
-          state.selectedSlot = slots[slotIndex];
+        const offset = state.slotOffset ?? 0;
+        const slots = await getAvailableSlots(state.matchedDoctor.id, offset + 3);
+        const visibleSlots = slots.slice(offset);
+        if (visibleSlots[slotIndex]) {
+          state.selectedSlot = visibleSlots[slotIndex];
           state.step = "confirm_booking";
         }
+      } else if (wantsMore && state.matchedDoctor) {
+        const offset = (state.slotOffset ?? 0) + 3;
+        const nextSlots = await getAvailableSlots(state.matchedDoctor.id, offset + 3);
+        if (nextSlots.length > (state.slotOffset ?? 0) + 3) {
+          state.slotOffset = offset;
+        } else {
+          // No more slots — ask for preferred time
+          state.step = "request_preferred_time";
+          state.slotOffset = 0;
+        }
+      }
+      break;
+    }
+
+    case "request_preferred_time": {
+      // Patient said a preferred time — store it and check availability
+      const dateMatch = message.match(/(\w+ \d{1,2}|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})/i);
+      const timeMatch = message.match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/i);
+      if (dateMatch || timeMatch) {
+        (state as any).preferredTimeRequest = message;
+        state.step = "check_preferred_slot";
+      }
+      break;
+    }
+
+    case "check_preferred_slot": {
+      if (lower.includes("yes") || lower.includes("confirm") || lower.includes("book")) {
+        state.step = "booked";
+      } else if (lower.includes("no") || lower.includes("change")) {
+        state.step = "request_preferred_time";
       }
       break;
     }

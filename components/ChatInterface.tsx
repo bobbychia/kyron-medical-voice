@@ -29,6 +29,7 @@ export default function ChatInterface() {
     matchedDoctor: Doctor;
   }>>({ step: "greeting" });
   const [voiceCalling, setVoiceCalling] = useState(false);
+  const [smsConsent, setSmsConsent] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -81,6 +82,7 @@ export default function ChatInterface() {
           sessionId,
           model,
           history: messages,
+          smsConsent,
         }),
       });
 
@@ -258,6 +260,19 @@ export default function ChatInterface() {
 
       {/* Input area */}
       <div className="bg-white border-t border-gray-200 px-4 py-3">
+        {["collect_email", "collect_reason", "match_doctor", "show_slots", "confirm_booking", "booked"].includes(state.step ?? "") && (
+          <div className="max-w-2xl mx-auto mb-2">
+            <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={smsConsent}
+                onChange={(e) => setSmsConsent(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600"
+              />
+              I consent to receive SMS appointment reminders
+            </label>
+          </div>
+        )}
         <div className="max-w-2xl mx-auto flex gap-2 items-end">
           <div className="flex-1 flex gap-2">
             <Input

@@ -76,6 +76,8 @@ function getStepInstruction(step: string): string {
     show_slots: "The patient has been matched to a doctor. First announce: 'Great news! Based on your concern, we've matched you with [doctor name and specialty].' Then show the available appointment times and ask the patient to pick one by number.",
     confirm_booking: "Confirm the selected appointment details and ask the patient to confirm with 'yes' or choose a different time.",
     booked: "The appointment is confirmed. Thank the patient and let them know they will receive a confirmation email and text.",
+    request_preferred_time: "None of our available slots worked for the patient. Ask: 'What date and time would work best for you?' Listen to their answer and respond: if their requested time matches a slot in your available slots list, offer to book it. If not, say: 'I'm sorry, we don't have availability at that time. Our team will follow up with you by email and text with alternative options.'",
+    check_preferred_slot: "Continue helping the patient finalize their preferred appointment time.",
     general: "Help the patient with their question about the practice.",
   };
   return instructions[step] ?? "Continue helping the patient.";
