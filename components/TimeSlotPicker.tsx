@@ -8,9 +8,10 @@ interface Props {
   doctor: Doctor;
   slots: AvailabilitySlot[];
   onSelect: (slot: AvailabilitySlot) => void;
+  onRequestMore?: () => void;
 }
 
-export default function TimeSlotPicker({ doctor, slots, onSelect }: Props) {
+export default function TimeSlotPicker({ doctor, slots, onSelect, onRequestMore }: Props) {
   // Group slots by date
   const grouped = slots.reduce<Record<string, AvailabilitySlot[]>>((acc, slot) => {
     if (!acc[slot.date]) acc[slot.date] = [];
@@ -51,6 +52,14 @@ export default function TimeSlotPicker({ doctor, slots, onSelect }: Props) {
           </div>
         ))}
       </div>
+      {onRequestMore && (
+        <button
+          onClick={onRequestMore}
+          className="mt-3 w-full text-xs text-gray-500 hover:text-gray-700 py-1.5 border border-dashed border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+        >
+          None of these work → Show more options
+        </button>
+      )}
     </div>
   );
 }

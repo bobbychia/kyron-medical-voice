@@ -221,6 +221,32 @@ export default function ChatInterface() {
             </div>
           )}
 
+          {/* Out-of-scope notice */}
+          {state.step === "match_doctor" && (
+            <div className="flex flex-col gap-2 max-w-sm ml-11">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <p className="text-xs font-medium text-amber-700 mb-2">⚠️ Outside our treatment scope</p>
+                <p className="text-xs text-amber-600 mb-3">Our practice currently treats bone &amp; joint, heart, neurology, and digestive conditions.</p>
+                <div className="flex flex-col gap-1.5">
+                  {[
+                    { label: "🦴 Bone & Joint Pain", value: "I have bone and joint pain" },
+                    { label: "❤️ Heart & Chest", value: "I have chest pain and heart concerns" },
+                    { label: "🧠 Headache & Neurology", value: "I have headaches and neurological symptoms" },
+                    { label: "🫁 Stomach & Digestion", value: "I have stomach and digestive issues" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => sendMessage(opt.value)}
+                      className="text-left px-3 py-2 bg-white border border-amber-200 rounded-lg text-xs text-amber-800 hover:bg-amber-50 transition-colors"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Time slot picker */}
           {state.step === "show_slots" && state.availableSlots && state.matchedDoctor && (
             <TimeSlotPicker
@@ -230,6 +256,7 @@ export default function ChatInterface() {
                 const idx = state.availableSlots!.indexOf(slot) + 1;
                 sendMessage(String(idx));
               }}
+              onRequestMore={() => sendMessage("none of these work, show me more options")}
             />
           )}
 
