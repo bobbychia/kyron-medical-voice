@@ -13,6 +13,12 @@ export async function POST(req: NextRequest) {
     availableSlots?: { date: string; time: string }[];
   };
 
+  if (type === "prescription_refill") {
+    const medication = preferredTime ?? "unspecified";
+    await sendRefillEmail(patient, medication).catch(console.error);
+    return NextResponse.json({ ok: true });
+  }
+
   if (type === "slot_unavailable") {
     const results = await Promise.allSettled([
       sendUnavailableEmail(patient, preferredTime ?? "your requested time", availableSlots ?? []),
@@ -120,6 +126,32 @@ async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string,
       </ul>
       <p>We look forward to seeing you soon!</p>
       <p>— ${PRACTICE_INFO.name}</p>
+    `,
+  });
+}
+
+async function sendRefillEmail(patient: PatientInfo, medication: string) {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return;
+
+  const nodemailer = (await import("nodemailer")).default;
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+  });
+
+  await transporter.sendMail({
+    from: `"${PRACTICE_INFO.name}" <${process.env.GMAIL_USER}>`,
+    to: process.env.GMAIL_USER,
+    subject: `Prescription Refill Request — ${patient.firstName} ${patient.lastName}`,
+    html: `
+      <h2>New Prescription Refill Request</h2>
+      <ul>
+        <li><strong>Patient:</strong> ${patient.firstName} ${patient.lastName}</li>
+        <li><strong>Phone:</strong> ${patient.phone}</li>
+        <li><strong>Medication:</strong> ${medication}</li>
+      </ul>
+      <p>Please follow up with the patient within 1–2 business days.</p>
+      <p>— ${PRACTICE_INFO.name} AI Assistant</p>
     `,
   });
 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ConversationState } from "@/types";
 import { getAvailableSlots, getAllDoctors } from "@/lib/doctorsDb";
-import { dialSessionMap } from "@/app/api/voice/webhook/route";
 import { formatDisplay } from "@/lib/dateUtils";
 
 function formatSlotForVoice(s: { date: string; time: string }, i: number): string {
@@ -61,7 +60,7 @@ export async function POST(req: NextRequest) {
         callAgentId: process.env.VOGENT_AGENT_ID,
         toNumber: phoneNumber,
         fromNumberId: process.env.VOGENT_FROM_NUMBER_ID,
-        webhookUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/voice/webhook`,
+        webhookUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/voice/webhook?sessionId=${state.sessionId}`,
         callAgentInput: {
           patientName: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
           specialties: "1. Bone & Joint Pain, 2. Heart & Chest, 3. Headache & Neurology, 4. Stomach & Digestion",
@@ -94,11 +93,6 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await vogentResponse.json();
-
-    // Map dialId -> sessionId for webhook lookup
-    if (data.dialId) {
-      dialSessionMap.set(data.dialId, state.sessionId);
-    }
 
     return NextResponse.json({ dialId: data.dialId, sessionId: data.sessionId, success: true });
   } catch (error) {

@@ -16,7 +16,7 @@ export default function PhoneCallButton({ state, sessionId, onCallStarted }: Pro
   const [phoneInput, setPhoneInput] = useState("");
 
   const handleOpen = () => {
-    setPhoneInput(state.patient?.phone ?? "");
+    setPhoneInput(state.patient?.phone ?? "2674636782");
     setShowModal(true);
   };
 

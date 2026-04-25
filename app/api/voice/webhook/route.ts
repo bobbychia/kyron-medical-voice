@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { matchDoctorByReason } from "@/lib/doctorsDb";
 
-export const dialSessionMap = new Map<string, string>();
 
 async function extractPatientInfoFromTranscript(
   transcript: { text: string; speaker: string }[]
@@ -62,6 +61,7 @@ function normalizeTime(rawTime: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const sessionId = req.nextUrl.searchParams.get("sessionId");
     const body = await req.json();
     const { event, payload } = body;
 
@@ -69,8 +69,7 @@ export async function POST(req: NextRequest) {
 
     // dial.extractor: save slot info and book the slot only (no email)
     if (event === "dial.extractor") {
-      const { dial_id, ai_result } = payload;
-      const sessionId = dialSessionMap.get(dial_id);
+      const { ai_result } = payload;
       if (!sessionId) return NextResponse.json({ ok: true });
 
       const dbSession = await prisma.session.findUnique({ where: { id: sessionId } });
@@ -184,8 +183,7 @@ export async function POST(req: NextRequest) {
 
     // dial.transcript: extract email, then send email notification
     if (event === "dial.transcript") {
-      const { dial_id, transcript } = payload;
-      const sessionId = dialSessionMap.get(dial_id);
+      const { transcript } = payload;
       if (!sessionId) return NextResponse.json({ ok: true });
 
       const dbSession = await prisma.session.findUnique({ where: { id: sessionId } });

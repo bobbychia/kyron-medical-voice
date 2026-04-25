@@ -205,7 +205,6 @@ export default function ChatInterface() {
               <p className="text-xs text-gray-500 mb-1">Quick actions:</p>
               {[
                 { label: "📅 Schedule an appointment", value: "I'd like to schedule an appointment" },
-                { label: "⚡ What's the next available appointment?", value: "What's the next available appointment?" },
                 { label: "💊 Request a prescription refill", value: "I need a prescription refill" },
                 { label: "📍 Office hours & location", value: "What are your office hours and location?" },
               ].map((opt) => (

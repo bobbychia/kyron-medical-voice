@@ -52,6 +52,12 @@ export type ConversationStep =
   | "booked"
   | "request_preferred_time"
   | "check_preferred_slot"
+  | "refill_collect_name"
+  | "refill_collect_phone"
+  | "refill_collect_doctor"
+  | "refill_collect_medication"
+  | "refill_submitted"
+  | "office_info"
   | "general";
 
 export interface ConversationState {

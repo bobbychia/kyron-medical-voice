@@ -4,6 +4,7 @@ import { buildSystemPrompt } from "@/lib/prompts";
 import { matchDoctorByReason, getAvailableSlots, checkSlotAvailable } from "@/lib/doctorsDb";
 import { ConversationState, AIModel, Message } from "@/types";
 import { prisma } from "@/lib/db";
+import { PRACTICE_INFO } from "@/lib/doctors";
 
 const sessions = new Map<string, ConversationState>();
 
@@ -30,13 +31,10 @@ export async function POST(req: NextRequest) {
 
     state = await updateState(state, message);
 
-
-    // For intake steps, use hardcoded replies instead of AI
-    const hardcodedReply = getHardcodedReply(state);
     let reply: string;
 
-    if (hardcodedReply) {
-      reply = hardcodedReply;
+    if (state.step === "office_info") {
+      reply = `Here's our practice information:\n\n📍 **Address:** ${PRACTICE_INFO.address}\n📞 **Phone:** ${PRACTICE_INFO.phone}\n🕐 **Hours:** ${PRACTICE_INFO.hours}\n\nIs there anything else I can help you with?`;
     } else {
       const aiMessages = history.map((m) => ({
         role: m.role as "user" | "assistant",
@@ -87,7 +85,24 @@ async function updateState(state: ConversationState, message: string): Promise<C
   const lower = message.toLowerCase().trim();
 
   switch (state.step) {
-    case "greeting":
+    case "greeting": {
+      if (/refill|prescription/i.test(lower)) {
+        state.step = "refill_collect_name";
+      } else if (/office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
+        state.step = "office_info";
+      } else {
+        const parts = message.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          state.patient.firstName = parts[0];
+          state.patient.lastName = parts.slice(1).join(" ");
+          state.step = "collect_dob";
+        } else {
+          state.step = "collect_name";
+        }
+      }
+      break;
+    }
+
     case "collect_name": {
       const parts = message.trim().split(/\s+/);
       if (parts.length >= 2) {
@@ -192,6 +207,51 @@ async function updateState(state: ConversationState, message: string): Promise<C
       break;
     }
 
+    case "refill_collect_name": {
+      const parts = message.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        state.patient.firstName = parts[0];
+        state.patient.lastName = parts.slice(1).join(" ");
+        state.step = "refill_collect_phone";
+      }
+      break;
+    }
+
+    case "refill_collect_phone": {
+      const digits = message.replace(/\D/g, "");
+      if (digits.length >= 10) {
+        state.patient.phone = digits;
+        state.step = "refill_collect_doctor";
+      }
+      break;
+    }
+
+    case "refill_collect_doctor": {
+      if (message.trim().length > 2) {
+        (state as any).refillDoctor = message.trim();
+        state.step = "refill_collect_medication";
+      }
+      break;
+    }
+
+    case "refill_collect_medication": {
+      (state as any).refillMedication = message.trim();
+      state.step = "refill_submitted";
+      // Fire-and-forget: notify the practice
+      fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient: state.patient,
+          doctor: {},
+          slot: {},
+          type: "prescription_refill",
+          preferredTime: message.trim(),
+        }),
+      }).catch(() => {});
+      break;
+    }
+
     default:
       break;
   }
@@ -220,31 +280,4 @@ function parseDateTimeFromMessage(message: string): { date: string; time: string
     return { date: dateStr, time: timeStr };
   }
   return null;
-}
-
-function getHardcodedReply(state: ConversationState): string | null {
-  const { step, patient } = state;
-
-  switch (step) {
-    case "collect_name":
-      return "Could you please tell me your full name (first and last)?";
-    case "collect_dob":
-      return `Thank you, ${patient.firstName}! Could you please provide your date of birth? (e.g. 01/15/1990)`;
-    case "collect_phone":
-      return "Got it! What's the best phone number to reach you?";
-    case "collect_email":
-      return "Great! And what's your email address?";
-    case "collect_reason":
-      return "Thank you! Could you briefly describe the reason for your visit today?";
-    case "match_doctor":
-      return "I'm sorry, our practice doesn't currently treat that condition. Is there anything else I can help you with?";
-    case "request_preferred_time":
-      if ((state as any).preferredTimeNotFound) {
-        (state as any).preferredTimeNotFound = false;
-        return "I'm sorry, we don't have availability at that exact time. Could you suggest another date or time that works for you?";
-      }
-      return "What date and time would work best for you? (e.g. June 10 at 2:00 PM)";
-    default:
-      return null; // use AI for show_slots, confirm_booking, booked, general
-  }
 }
