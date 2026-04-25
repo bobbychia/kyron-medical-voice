@@ -269,6 +269,29 @@ async function updateState(state: ConversationState, message: string): Promise<C
       break;
     }
 
+    case "office_info":
+    case "refill_submitted":
+    case "general": {
+      // User wants to start a new flow after a completed one
+      if (/refill|prescription/i.test(lower)) {
+        state.step = "refill_collect_name";
+      } else if (/next available|soonest|earliest/i.test(lower)) {
+        state.step = "next_available";
+      } else if (/office|hour|location|address|where|open|clos/i.test(lower)) {
+        state.step = "office_info";
+      } else if (/appointment|schedule|book|see a doctor|visit/i.test(lower)) {
+        // Reset booking-related state and restart appointment flow
+        state.matchedDoctor = undefined;
+        state.selectedSlot = undefined;
+        state.slotOffset = 0;
+        state.patient.reason = undefined;
+        state.step = "collect_name";
+      } else {
+        state.step = "general";
+      }
+      break;
+    }
+
     default:
       break;
   }

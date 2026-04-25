@@ -52,10 +52,10 @@ export const DOCTORS: Doctor[] = [
 
 export const PRACTICE_INFO = {
   name: "Kyron Medical Group",
-  address: "123 Health Plaza, Suite 400, Boston, MA 02101",
-  phone: "(617) 555-0100",
+  address: "xyz St., Providence, RI 02903",
+  phone: "(267) 435-9426",
   hours: "Monday–Friday: 8:00 AM – 6:00 PM",
-  email: "appointments@kyronmedical.com",
+  email: "bobbyjiahandsome@gmail.com",
 };
 
 export function matchDoctorByReason(reason: string): Doctor | null {

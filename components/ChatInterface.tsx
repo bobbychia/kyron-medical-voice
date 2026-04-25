@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Phone, Loader2, Bot, User, Stethoscope } from "lucide-react";
+import { Send, Phone, Loader2, Bot, User, Stethoscope, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -148,6 +148,20 @@ export default function ChatInterface() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Reset button */}
+          <button
+            onClick={() => {
+              setMessages([INITIAL_MESSAGE]);
+              setState({ step: "greeting" });
+              setInput("");
+              setVoiceCalling(false);
+            }}
+            title="Start new conversation"
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+
           {/* Model selector */}
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {(["claude", "gpt", "gemini"] as AIModel[]).map((m) => (
