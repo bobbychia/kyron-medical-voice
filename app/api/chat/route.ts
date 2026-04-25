@@ -153,15 +153,8 @@ async function updateState(state: ConversationState, message: string): Promise<C
           state.step = "confirm_booking";
         }
       } else if (wantsMore && state.matchedDoctor) {
-        const offset = (state.slotOffset ?? 0) + 3;
-        const nextSlots = await getAvailableSlots(state.matchedDoctor.id, offset + 3);
-        if (nextSlots.length > (state.slotOffset ?? 0) + 3) {
-          state.slotOffset = offset;
-        } else {
-          // No more slots — ask for preferred time
-          state.step = "request_preferred_time";
-          state.slotOffset = 0;
-        }
+        state.step = "request_preferred_time";
+        state.slotOffset = 0;
       }
       break;
     }
