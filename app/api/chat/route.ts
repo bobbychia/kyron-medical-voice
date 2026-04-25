@@ -61,8 +61,11 @@ export async function POST(req: NextRequest) {
     });
 
     const slotOff = state.slotOffset ?? 0;
-    const allFetched = state.matchedDoctor ? await getAvailableSlots(state.matchedDoctor.id, slotOff + 3) : undefined;
-    const availableSlots = allFetched ? allFetched.slice(slotOff) : undefined;
+    const isPreferredStep = state.step === "request_preferred_time";
+    const allFetched = state.matchedDoctor
+      ? await getAvailableSlots(state.matchedDoctor.id, isPreferredStep ? 60 : slotOff + 3)
+      : undefined;
+    const availableSlots = allFetched ? (isPreferredStep ? allFetched : allFetched.slice(slotOff)) : undefined;
 
     return NextResponse.json({
       reply,

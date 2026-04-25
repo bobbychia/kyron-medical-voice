@@ -36,6 +36,19 @@ Rules:
   return JSON.parse(jsonMatch[0]);
 }
 
+function normalizeDate(rawDate: string): string {
+  if (!rawDate) return rawDate;
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return rawDate;
+  // Remove weekday prefix (e.g. "Saturday, June 6 2026" → "June 6 2026")
+  const cleaned = rawDate.replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday),?\s*/gi, "").trim();
+  const parsed = new Date(cleaned);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split("T")[0];
+  }
+  return rawDate;
+}
+
 function normalizeTime(rawTime: string): string {
   const match = rawTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
   if (!match) return rawTime;
@@ -67,9 +80,10 @@ export async function POST(req: NextRequest) {
 
       // Patient gave a preferred time but it wasn't in offered slots
       if (!ai_result?.appointmentBooked && ai_result?.preferredDate && ai_result?.preferredTime) {
+        const normalizedPrefDate = normalizeDate(ai_result.preferredDate);
         const normalizedPref = normalizeTime(ai_result.preferredTime);
         const prefSlot = await prisma.slot.findFirst({
-          where: { date: ai_result.preferredDate, time: normalizedPref, available: true },
+          where: { date: normalizedPrefDate, time: normalizedPref, available: true },
           include: { doctor: true },
         });
 
@@ -88,14 +102,14 @@ export async function POST(req: NextRequest) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               patient: prefCtx.patient, doctor,
-              slot: { date: ai_result.preferredDate, time: normalizedPref, available: true },
+              slot: { date: normalizedPrefDate, time: normalizedPref, available: true },
               reason: prefCtx.patient?.reason ?? "",
             }),
           }).catch(console.error);
           console.log("Preferred slot booked for:", prefCtx.patient.email);
         } else if (prefCtx.patient?.email) {
           // Slot not available — fetch available slots for matched doctor and notify
-          const preferredDisplay = `${ai_result.preferredDate} at ${ai_result.preferredTime}`;
+          const preferredDisplay = `${normalizedPrefDate} at ${ai_result.preferredTime}`;
           let availableSlots: { date: string; time: string }[] = [];
           if (prefCtx.matchedDoctor?.id) {
             availableSlots = await prisma.slot.findMany({

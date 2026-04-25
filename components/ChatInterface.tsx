@@ -10,6 +10,7 @@ import { Message, AIModel, ConversationState, AvailabilitySlot, Doctor } from "@
 import { formatDisplay } from "@/lib/dateUtils";
 import PhoneCallButton from "@/components/PhoneCallButton";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
+import PreferredTimePicker from "@/components/PreferredTimePicker";
 
 const INITIAL_MESSAGE: Message = {
   id: "init",
@@ -245,6 +246,22 @@ export default function ChatInterface() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Preferred time picker */}
+          {state.step === "request_preferred_time" && state.availableSlots && (
+            <PreferredTimePicker
+              slots={state.availableSlots}
+              onSelect={(slot) => {
+                const d = new Date(slot.date + "T12:00:00").toLocaleDateString("en-US", {
+                  weekday: "long", month: "long", day: "numeric", year: "numeric",
+                });
+                const [h, m] = slot.time.split(":").map(Number);
+                const ampm = h >= 12 ? "PM" : "AM";
+                const hour = h % 12 || 12;
+                sendMessage(`${d} at ${hour}:${String(m).padStart(2, "0")} ${ampm}`);
+              }}
+            />
           )}
 
           {/* Time slot picker */}
