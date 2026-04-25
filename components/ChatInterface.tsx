@@ -15,7 +15,7 @@ import PreferredTimePicker from "@/components/PreferredTimePicker";
 const INITIAL_MESSAGE: Message = {
   id: "init",
   role: "assistant",
-  content: "Hello! I'm your Kyron Medical assistant. I'm here to help you schedule an appointment, check on a prescription refill, or answer questions about our practice.\n\nTo get started, could you please tell me your full name?",
+  content: "Hello! I'm your Kyron Medical assistant. 👋\n\nI can help you with:\n• **Scheduling an appointment** with one of our specialists\n• **Prescription refill** requests\n• **Office information** — hours, location & more\n\nHow can I assist you today?",
   timestamp: new Date(),
 };
 
@@ -198,6 +198,27 @@ export default function ChatInterface() {
               )}
             </div>
           ))}
+
+          {/* Initial quick actions */}
+          {(state.step === "greeting" || state.step === "collect_name") && messages.length <= 1 && (
+            <div className="flex flex-col gap-2 max-w-sm ml-11">
+              <p className="text-xs text-gray-500 mb-1">Quick actions:</p>
+              {[
+                { label: "📅 Schedule an appointment", value: "I'd like to schedule an appointment" },
+                { label: "⚡ What's the next available appointment?", value: "What's the next available appointment?" },
+                { label: "💊 Request a prescription refill", value: "I need a prescription refill" },
+                { label: "📍 Office hours & location", value: "What are your office hours and location?" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => sendMessage(opt.value)}
+                  className="text-left px-4 py-2.5 bg-white border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-50 transition-colors shadow-sm"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Specialty picker */}
           {state.step === "collect_reason" && (
