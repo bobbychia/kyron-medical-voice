@@ -33,7 +33,22 @@ export async function POST(req: NextRequest) {
 
     let reply: string;
 
-    if (state.step === "office_info") {
+    if (state.step === "next_available") {
+      const { getAllDoctors } = await import("@/lib/doctorsDb");
+      const allDoctors = await getAllDoctors();
+      const lines = await Promise.all(
+        allDoctors.map(async (doc) => {
+          const slots = await getAvailableSlots(doc.id, 1);
+          if (slots.length === 0) return null;
+          const { formatDisplay } = await import("@/lib/dateUtils");
+          return `**${formatDisplay(slots[0].date, slots[0].time)}** with ${doc.name} (${doc.specialty})`;
+        })
+      );
+      const available = lines.filter(Boolean);
+      reply = available.length > 0
+        ? `Here are the soonest openings we have:\n\n${available.join("\n\n")}\n\nWhich one works for you, or is there a particular specialty you need?`
+        : "I'm sorry, there are no available slots at the moment. Please call us at " + PRACTICE_INFO.phone + " to check availability.";
+    } else if (state.step === "office_info") {
       reply = `Here's our practice information:\n\n📍 **Address:** ${PRACTICE_INFO.address}\n📞 **Phone:** ${PRACTICE_INFO.phone}\n🕐 **Hours:** ${PRACTICE_INFO.hours}\n\nIs there anything else I can help you with?`;
     } else {
       const aiMessages = history.map((m) => ({
@@ -88,6 +103,8 @@ async function updateState(state: ConversationState, message: string): Promise<C
     case "greeting": {
       if (/refill|prescription/i.test(lower)) {
         state.step = "refill_collect_name";
+      } else if (/next available|soonest|earliest|first opening/i.test(lower)) {
+        state.step = "next_available";
       } else if (/office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
         state.step = "office_info";
       } else {

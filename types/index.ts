@@ -58,6 +58,7 @@ export type ConversationStep =
   | "refill_collect_medication"
   | "refill_submitted"
   | "office_info"
+  | "next_available"
   | "general";
 
 export interface ConversationState {
