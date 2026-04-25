@@ -113,7 +113,7 @@ export default function AdminDashboard() {
             }}
             className="text-sm text-gray-500 hover:text-red-600 transition-colors"
           >
-            退出登录
+            Sign Out
           </button>
         </div>
       </header>
