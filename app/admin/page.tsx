@@ -104,7 +104,18 @@ export default function AdminDashboard() {
           <h1 className="text-xl font-semibold text-gray-900">Kyron Medical — Admin Dashboard</h1>
           <p className="text-sm text-gray-500">Manage doctor availability and appointments</p>
         </div>
-        <a href="/" className="text-sm text-blue-600 hover:underline">← Back to Chat</a>
+        <div className="flex items-center gap-4">
+          <a href="/" className="text-sm text-blue-600 hover:underline">← Back to Chat</a>
+          <button
+            onClick={async () => {
+              await fetch("/api/admin/login", { method: "DELETE" });
+              window.location.href = "/admin/login";
+            }}
+            className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+          >
+            退出登录
+          </button>
+        </div>
       </header>
 
       <div className="flex h-[calc(100vh-73px)]">
