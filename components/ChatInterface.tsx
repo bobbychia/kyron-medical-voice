@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Message, AIModel, ConversationState, AvailabilitySlot, Doctor } from "@/types";
 import { formatDisplay } from "@/lib/dateUtils";
+import { DOCTORS } from "@/lib/doctors";
 import PhoneCallButton from "@/components/PhoneCallButton";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import PreferredTimePicker from "@/components/PreferredTimePicker";
@@ -150,12 +151,7 @@ export default function ChatInterface() {
         <div className="flex items-center gap-2">
           {/* Reset button */}
           <button
-            onClick={() => {
-              setMessages([INITIAL_MESSAGE]);
-              setState({ step: "greeting" });
-              setInput("");
-              setVoiceCalling(false);
-            }}
+            onClick={() => window.location.reload()}
             title="Start new conversation"
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
@@ -180,6 +176,36 @@ export default function ChatInterface() {
           </div>
         </div>
       </header>
+
+      <div className="flex flex-1 overflow-hidden">
+      {/* Doctors sidebar */}
+      <aside className="hidden md:flex flex-col w-52 bg-white border-r border-gray-200 p-3 gap-1 overflow-y-auto flex-shrink-0">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">Our Specialists</p>
+        {state.step === "refill_collect_doctor" && (
+          <p className="text-xs text-blue-600 px-2 mb-2">Tap to select prescribing doctor</p>
+        )}
+        {DOCTORS.map((doc) => (
+          <div
+            key={doc.id}
+            onClick={() => state.step === "refill_collect_doctor" && sendMessage(doc.name)}
+            className={`flex items-center gap-2 px-2 py-2 rounded-lg transition-colors ${
+              state.matchedDoctor?.id === doc.id ? "bg-blue-50 border border-blue-200" :
+              state.step === "refill_collect_doctor" ? "hover:bg-blue-50 cursor-pointer border border-transparent hover:border-blue-200" :
+              "hover:bg-gray-50"
+            }`}
+          >
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${
+              state.matchedDoctor?.id === doc.id ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500"
+            }`}>
+              {doc.name.split(" ").pop()![0]}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-gray-800 truncate">{doc.name}</p>
+              <p className="text-xs text-gray-400 truncate">{doc.specialty}</p>
+            </div>
+          </div>
+        ))}
+      </aside>
 
       {/* Messages */}
       <ScrollArea className="flex-1 px-4 py-4">
@@ -219,8 +245,11 @@ export default function ChatInterface() {
             </div>
           ))}
 
-          {/* Initial quick actions */}
-          {(state.step === "greeting" || state.step === "collect_name") && messages.length <= 1 && (
+          {/* Quick actions — show at start or after a flow completes, never while loading */}
+          {!loading && (
+            (["greeting", "collect_name"].includes(state.step ?? "") && messages.length <= 1) ||
+            ["office_info", "next_available", "refill_submitted", "booked", "general"].includes(state.step ?? "")
+          ) && (
             <div className="flex flex-col gap-2 max-w-sm ml-11">
               <p className="text-xs text-gray-500 mb-1">Quick actions:</p>
               {[
@@ -332,6 +361,7 @@ export default function ChatInterface() {
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
+      </div>
 
       {/* Doctor matched banner */}
       {state.matchedDoctor && state.step !== "booked" && (
