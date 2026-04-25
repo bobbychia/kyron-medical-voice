@@ -188,7 +188,13 @@ export default function ChatInterface() {
                 }`}
               >
                 {msg.content.split("\n").map((line, i) => (
-                  <p key={i} className={i > 0 ? "mt-1" : ""}>{line}</p>
+                  <p key={i} className={i > 0 ? "mt-1" : ""}>
+                    {line.split(/(\*\*[^*]+\*\*)/).map((part, j) =>
+                      part.startsWith("**") && part.endsWith("**")
+                        ? <strong key={j}>{part.slice(2, -2)}</strong>
+                        : part
+                    )}
+                  </p>
                 ))}
               </div>
               {msg.role === "user" && (
