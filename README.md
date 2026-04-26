@@ -8,7 +8,23 @@ Live app:
 https://3.19.15.231.nip.io
 ```
 
+Demo video:
+
+```text
+https://youtu.be/igjYxiOABm0
+```
+
 The app is deployed on AWS EC2 and uses AWS RDS for persistent data.
+
+## Highlight Points
+
+- Chat and voice share the same session, so the phone call can continue from the web chat instead of starting over.
+- The scheduling flow checks live database availability before confirming a booking.
+- Admin slot changes are handled safely. If a patient chooses a slot that was just blocked or deleted, the app explains that the administrator updated it and refreshes the latest slots.
+- The next-available flow returns the earliest open time for each doctor and then goes back to the main menu.
+- Preferred times from voice calls are checked against the database. If the time is available, it can be booked; if not, the patient gets an unavailable-time email with other options.
+- Prescription refill is its own flow, so it does not ask appointment questions like reason for visit or specialty.
+- Confirmation, refill, and unavailable-time notifications are sent by email, with SMS support available when enabled.
 
 ## What It Does
 
@@ -39,7 +55,7 @@ The final booking happens server-side before the assistant says the appointment 
 
 ### 2. Check Next Available
 
-The assistant checks the database for the earliest open slot and returns it directly.
+The assistant checks the database and returns the earliest open time for each doctor, then returns to the main menu.
 
 ### 3. Prescription Refill
 
