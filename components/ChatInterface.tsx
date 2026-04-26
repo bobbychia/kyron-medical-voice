@@ -16,7 +16,7 @@ import PreferredTimePicker from "@/components/PreferredTimePicker";
 const INITIAL_MESSAGE: Message = {
   id: "init",
   role: "assistant",
-  content: "Hello! I'm your Kyron Medical assistant. 👋\n\nI can help you with:\n• **Scheduling an appointment** with one of our specialists\n• **Prescription refill** requests\n• **Office information** — hours, location & more\n\nHow can I assist you today?",
+  content: "Hello! I'm Kyra, your Kyron Medical assistant. 👋\n\nHow can I help you today?\n\n1. **Schedule an appointment**\n2. **Check next available appointment**\n3. **Request a prescription refill**\n4. **Office hours & location**",
   timestamp: new Date(),
 };
 
