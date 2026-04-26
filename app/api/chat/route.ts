@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
     const stateWithMeta = state as ConversationStateWithMeta;
 
     if (stateWithMeta.bookingConflict) {
-      reply = "I'm sorry, that time was just booked by someone else. Here are the latest available times. Please choose another option.";
+      reply = "I'm sorry, that time was just updated by the administrator and is no longer available. I've refreshed the latest available times below. Please choose another option.";
       stateWithMeta.bookingConflict = false;
     } else if (stateWithMeta.preferredTimeNotFound) {
       reply = "I'm sorry, that time is not available. Please choose one of the currently available times, or share another preferred date and time and we'll keep checking.";
