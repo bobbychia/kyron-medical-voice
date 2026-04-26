@@ -109,7 +109,7 @@ async function updateState(state: ConversationState, message: string): Promise<C
       } else if (/office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
         state.step = "office_info";
       } else {
-        state.step = "collect_name";
+        state.step = "collect_reason";
       }
       break;
     }
@@ -148,7 +148,8 @@ async function updateState(state: ConversationState, message: string): Promise<C
       const emailMatch = message.match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
       if (emailMatch) {
         state.patient.email = emailMatch[0];
-        state.step = "collect_reason";
+        // If reason already collected (specialty asked first), go straight to slots
+        state.step = state.matchedDoctor ? "show_slots" : "collect_reason";
       }
       break;
     }
@@ -159,7 +160,8 @@ async function updateState(state: ConversationState, message: string): Promise<C
       const doctor = await matchDoctorByReason(message);
       if (doctor) {
         state.matchedDoctor = doctor;
-        state.step = "show_slots";
+        // If patient info already collected, go to slots; otherwise collect name first
+        state.step = (state.patient.firstName && state.patient.lastName) ? "show_slots" : "collect_name";
       } else {
         state.step = "match_doctor";
       }
