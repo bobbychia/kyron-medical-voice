@@ -298,7 +298,10 @@ export async function POST(req: NextRequest) {
 
         const freshForEmail = await prisma.session.findUnique({ where: { id: sessionId } });
         const emailCtx = ((freshForEmail?.context as unknown) ?? context) as VoiceContext;
-        if (emailCtx.patient?.email && emailCtx.matchedDoctor && emailCtx.selectedSlot && !emailCtx.bookingConfirmed) {
+        if (!emailCtx.patient?.email) {
+          await handlePreferredTime(baseUrl, sessionId, emailCtx, normalizedDate, ai_result.selectedTime);
+          console.log("No email yet, selected time saved for transcript retry");
+        } else if (emailCtx.matchedDoctor && emailCtx.selectedSlot && !emailCtx.bookingConfirmed) {
           const bookRes = await fetch(`${baseUrl}/api/book`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -316,8 +319,10 @@ export async function POST(req: NextRequest) {
             emailCtx.bookingConfirmed = true;
             await prisma.session.update({ where: { id: sessionId }, data: { context: asJsonContext(emailCtx) } });
             console.log("Booking + notifications sent (from extractor) to:", emailCtx.patient.email);
+          } else if (bookRes?.status === 409) {
+            await handlePreferredTime(baseUrl, sessionId, emailCtx, normalizedDate, ai_result.selectedTime);
           } else {
-            console.log("No email yet, or booking failed; transcript may retry if email is missing");
+            console.error("Booking from extractor failed:", await bookRes?.text().catch(() => ""));
           }
         } else {
           console.log("No email yet, dial.transcript will send it");
@@ -389,6 +394,16 @@ export async function POST(req: NextRequest) {
           freshCtx.bookingConfirmed = true;
           await prisma.session.update({ where: { id: sessionId }, data: { context: asJsonContext(freshCtx) } });
           console.log("Booking triggered from transcript for:", freshCtx.patient.email);
+        } else if (bookRes?.status === 409) {
+          await handlePreferredTime(
+            baseUrl,
+            sessionId,
+            freshCtx,
+            freshCtx.selectedSlot.date,
+            freshCtx.selectedSlot.time
+          );
+        } else {
+          console.error("Booking from transcript failed:", await bookRes?.text().catch(() => ""));
         }
       }
 
