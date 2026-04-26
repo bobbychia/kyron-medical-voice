@@ -49,9 +49,12 @@ export async function POST(req: NextRequest) {
       state.matchedDoctor ? `Matched doctor: ${state.matchedDoctor.name} (${state.matchedDoctor.specialty})` : null,
     ].filter(Boolean).join(", ");
 
-    const openingMessage = missingFields.length > 0
-      ? `Hello ${p.firstName ?? "there"}, this is an AI assistant calling from Kyron Medical. I'm continuing your appointment request. I still need to collect your ${missingFields.join(" and ")}. Let's get that done quickly.`
-      : `Hello ${p.firstName}, this is an AI assistant calling from Kyron Medical. We've matched you with ${state.matchedDoctor?.name ?? "a specialist"} for your ${p.reason ?? "visit"} concern. I have some available appointment times for you.`;
+    const hasContext = !!(p.firstName || p.reason || p.email);
+    const openingMessage = !hasContext
+      ? `Hello, this is Kyra calling from Kyron Medical. How can I help you today? I can assist with: scheduling an appointment, checking next available times, prescription refills, or office hours and location.`
+      : missingFields.length > 0
+        ? `Hello ${p.firstName ?? "there"}, this is Kyra calling from Kyron Medical. I'm following up on your request. I still need to collect your ${missingFields.join(" and ")}. Let's get that done quickly.`
+        : `Hello ${p.firstName}, this is Kyra calling from Kyron Medical. We've matched you with ${state.matchedDoctor?.name ?? "a specialist"} for your ${p.reason ?? "visit"} concern. I have some available appointment times for you.`;
 
     const vogentResponse = await fetch("https://api.vogent.ai/api/dials", {
       method: "POST",
