@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { callAI } from "@/lib/ai/router";
 import { buildSystemPrompt } from "@/lib/prompts";
 import { matchDoctorByReason, getAvailableSlots, checkSlotAvailable } from "@/lib/doctorsDb";
-import { ConversationState, AIModel, Message } from "@/types";
+import { ConversationState, AIModel, Message, AvailabilitySlot } from "@/types";
 import { prisma } from "@/lib/db";
 import { PRACTICE_INFO } from "@/lib/doctors";
 
@@ -17,6 +17,7 @@ type ConversationStateWithMeta = ConversationState & {
   refillNotified?: boolean;
   bookingConflict?: boolean;
   bookingConfirmed?: boolean;
+  offeredSlots?: AvailabilitySlot[];
 };
 
 function getNextRefillStep(state: ConversationStateWithMeta): ConversationState["step"] {
@@ -96,6 +97,24 @@ async function confirmAppointmentBooking(state: ConversationStateWithMeta, origi
   return false;
 }
 
+async function getSlotsForDisplay(state: ConversationStateWithMeta): Promise<AvailabilitySlot[] | undefined> {
+  if (!state.matchedDoctor) return undefined;
+
+  if (state.step === "request_preferred_time") {
+    return getAvailableSlots(state.matchedDoctor.id, 60);
+  }
+
+  if (state.step !== "show_slots") return undefined;
+
+  if (!state.offeredSlots || state.offeredSlots.length === 0) {
+    const offset = state.slotOffset ?? 0;
+    const slots = await getAvailableSlots(state.matchedDoctor.id, offset + 3);
+    state.offeredSlots = slots.slice(offset);
+  }
+
+  return state.offeredSlots;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { message, sessionId, model = "claude", history = [], smsConsent } = await req.json() as {
@@ -126,6 +145,7 @@ export async function POST(req: NextRequest) {
     if (stateWithMeta.bookingConflict) {
       reply = "I'm sorry, that time was just updated by the administrator and is no longer available. I've refreshed the latest available times below. Please choose another option.";
       stateWithMeta.bookingConflict = false;
+      stateWithMeta.offeredSlots = undefined;
     } else if (stateWithMeta.preferredTimeNotFound) {
       reply = "I'm sorry, that time is not available. Please choose one of the currently available times, or share another preferred date and time and we'll keep checking.";
       stateWithMeta.preferredTimeNotFound = false;
@@ -155,13 +175,9 @@ export async function POST(req: NextRequest) {
         content: m.content,
       }));
       aiMessages.push({ role: "user", content: message });
-      const offset = state.slotOffset ?? 0;
       const shouldExposeSlots = state.step === "show_slots" || state.step === "request_preferred_time";
-      const slots = shouldExposeSlots && state.matchedDoctor
-        ? await getAvailableSlots(state.matchedDoctor.id, state.step === "request_preferred_time" ? 60 : offset + 3)
-        : undefined;
-      const visibleSlots = slots
-        ? state.step === "request_preferred_time" ? slots : slots.slice(offset)
+      const visibleSlots = shouldExposeSlots
+        ? await getSlotsForDisplay(stateWithMeta)
         : undefined;
       const systemPrompt = buildSystemPrompt(state, visibleSlots);
       reply = await callAI(model, aiMessages, systemPrompt);
@@ -177,13 +193,9 @@ export async function POST(req: NextRequest) {
       create: { id: sessionId, step: state.step, context: state as unknown as object },
     });
 
-    const slotOff = state.slotOffset ?? 0;
     const isPreferredStep = state.step === "request_preferred_time";
     const shouldReturnSlots = state.step === "show_slots" || isPreferredStep;
-    const allFetched = shouldReturnSlots && state.matchedDoctor
-      ? await getAvailableSlots(state.matchedDoctor.id, isPreferredStep ? 60 : slotOff + 3)
-      : undefined;
-    const availableSlots = allFetched ? (isPreferredStep ? allFetched : allFetched.slice(slotOff)) : undefined;
+    const availableSlots = shouldReturnSlots ? await getSlotsForDisplay(stateWithMeta) : undefined;
 
     return NextResponse.json({
       reply,
@@ -197,6 +209,7 @@ export async function POST(req: NextRequest) {
         refillMedication: stateWithMeta.refillMedication,
         refillNotified: stateWithMeta.refillNotified,
         bookingConfirmed: stateWithMeta.bookingConfirmed,
+        offeredSlots: stateWithMeta.offeredSlots,
       },
     });
   } catch (error) {
@@ -216,6 +229,7 @@ async function updateState(state: ConversationState, message: string, origin: st
         state.selectedSlot = undefined;
         state.slotOffset = 0;
         state.patient.reason = undefined;
+        (state as ConversationStateWithMeta).offeredSlots = undefined;
         state.step = getNextAppointmentStep(state);
       } else if (num === 2 || /next available|soonest|earliest|first opening/i.test(lower)) {
         state.step = "next_available";
@@ -278,6 +292,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       const doctor = await matchDoctorByReason(message);
       if (doctor) {
         state.matchedDoctor = doctor;
+        (state as ConversationStateWithMeta).offeredSlots = undefined;
         state.step = getNextAppointmentStep(state);
       } else {
         state.step = "match_doctor";
@@ -298,17 +313,18 @@ async function updateState(state: ConversationState, message: string, origin: st
         } else {
           const stateWithMeta = state as ConversationStateWithMeta;
           stateWithMeta.bookingConflict = true;
+          stateWithMeta.offeredSlots = undefined;
           state.step = "show_slots";
         }
       } else if (!isNaN(slotIndex) && state.matchedDoctor) {
-        const offset = state.slotOffset ?? 0;
-        const slots = await getAvailableSlots(state.matchedDoctor.id, offset + 3);
-        const visibleSlots = slots.slice(offset);
+        const stateWithMeta = state as ConversationStateWithMeta;
+        const visibleSlots = stateWithMeta.offeredSlots ?? await getSlotsForDisplay(stateWithMeta) ?? [];
         if (visibleSlots[slotIndex]) {
           state.selectedSlot = visibleSlots[slotIndex];
           state.step = "confirm_booking";
         }
       } else if (wantsMore && state.matchedDoctor) {
+        (state as ConversationStateWithMeta).offeredSlots = undefined;
         state.step = "request_preferred_time";
         state.slotOffset = 0;
       }
@@ -348,8 +364,10 @@ async function updateState(state: ConversationState, message: string, origin: st
         const booked = await confirmAppointmentBooking(stateWithMeta, origin);
         if (booked) {
           state.step = "booked";
+          stateWithMeta.offeredSlots = undefined;
         } else {
           state.selectedSlot = undefined;
+          stateWithMeta.offeredSlots = undefined;
           state.step = "show_slots";
         }
       } else if (lower.includes("no") || lower.includes("change")) {
@@ -404,6 +422,7 @@ async function updateState(state: ConversationState, message: string, origin: st
         state.selectedSlot = undefined;
         state.slotOffset = 0;
         state.patient.reason = undefined;
+        (state as ConversationStateWithMeta).offeredSlots = undefined;
         state.step = getNextAppointmentStep(state);
       } else if (num === 2 || /next available|soonest|earliest/i.test(lower)) {
         state.step = "next_available";
