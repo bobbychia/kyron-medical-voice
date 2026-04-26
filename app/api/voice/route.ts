@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
           flow: refillFlow ? "prescription_refill" : "appointment",
           taskInstructions: refillFlow
             ? "This call is ONLY for a prescription refill. Do not ask for a reason for visit, appointment reason, specialties, or appointment slots. Use the chat context already provided. Ask only for missing refill details in this order: full name, phone number, prescribing doctor, medication name. Once those are collected, say the refill request will be sent to the care team."
-            : "This call is for appointment scheduling. Collect missing appointment details, match specialty, offer slots, and confirm a selected appointment.",
+            : "This call can handle appointment scheduling, checking next available times, office hours, or location. If the patient asks for next available times, read the earliest available appointment for EACH doctor from allSlots, then ask if there is anything else you can help with. Do not ask for name, DOB, phone, email, or reason for the next-available flow. For appointment scheduling, collect missing appointment details, match specialty, offer slots, and confirm a selected appointment.",
           reason: refillFlow ? "" : p.reason ?? "",
           refillDoctor: mergedState.refillDoctor ?? "",
           refillMedication: mergedState.refillMedication ?? "",
@@ -164,12 +164,12 @@ async function getAllSlotsFormatted(): Promise<string> {
   const allDoctors = await getAllDoctors();
   const slotLines = await Promise.all(
     allDoctors.map(async (doc) => {
-      const slots = await getAvailableSlots(doc.id, 3);
+      const slots = await getAvailableSlots(doc.id, 1);
       const slotStr = slots.length > 0
-        ? slots.map((s, i) => formatSlotForVoice(s, i)).join(", ")
+        ? formatDisplay(slots[0].date, slots[0].time)
         : "no slots available";
-      return `${doc.specialty} - ${doc.name}: ${slotStr}`;
+      return `${doc.name} (${doc.specialty}): ${slotStr}`;
     })
   );
-  return slotLines.join(" | ");
+  return `Earliest available appointment for each doctor: ${slotLines.join(" | ")}`;
 }
