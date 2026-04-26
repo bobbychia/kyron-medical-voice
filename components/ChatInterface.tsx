@@ -59,27 +59,6 @@ export default function ChatInterface() {
     return () => clearInterval(interval);
   }, [voiceCalling, sessionId, state.step]);
 
-  useEffect(() => {
-    if (!state.matchedDoctor || !["show_slots", "request_preferred_time"].includes(state.step ?? "")) return;
-
-    const refreshSlots = async () => {
-      const limit = state.step === "request_preferred_time" ? 60 : 3;
-      const res = await fetch(`/api/slots?doctorId=${state.matchedDoctor!.id}&limit=${limit}`, {
-        cache: "no-store",
-      });
-      if (!res.ok) return;
-      const data = await res.json() as { slots?: AvailabilitySlot[] };
-      setState((prev) => ({
-        ...prev,
-        availableSlots: data.slots ?? prev.availableSlots,
-      }));
-    };
-
-    refreshSlots();
-    const interval = setInterval(refreshSlots, 3000);
-    return () => clearInterval(interval);
-  }, [state.matchedDoctor, state.step]);
-
   const sendMessage = useCallback(async (text?: string) => {
     const userText = (text ?? input).trim();
     if (!userText || loading) return;
