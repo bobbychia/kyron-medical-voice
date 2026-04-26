@@ -3,6 +3,9 @@ import { PatientInfo, Doctor, AvailabilitySlot } from "@/types";
 import { formatDisplay } from "@/lib/dateUtils";
 import { PRACTICE_INFO } from "@/lib/doctors";
 
+type PatientWithConsent = PatientInfo & { smsConsent?: boolean };
+type SettledResult = PromiseSettledResult<unknown>;
+
 export async function POST(req: NextRequest) {
   const { patient, doctor, slot, type, preferredTime, availableSlots } = await req.json() as {
     patient: PatientInfo;
@@ -15,8 +18,16 @@ export async function POST(req: NextRequest) {
 
   if (type === "prescription_refill") {
     const medication = preferredTime ?? "unspecified";
-    await sendRefillEmail(patient, medication).catch(console.error);
-    return NextResponse.json({ ok: true });
+    const result = await Promise.allSettled([sendRefillEmail(patient, medication)]);
+    console.log("Refill notify results:", {
+      toEmail: process.env.GMAIL_USER,
+      email: result[0].status,
+      emailError: result[0].status === "rejected" ? result[0].reason?.message : undefined,
+    });
+    return NextResponse.json({
+      email: result[0].status,
+      emailError: result[0].status === "rejected" ? result[0].reason?.message : undefined,
+    });
   }
 
   if (type === "slot_unavailable") {
@@ -36,15 +47,15 @@ export async function POST(req: NextRequest) {
 
   const results = await Promise.allSettled([
     sendEmail(patient, doctor, appointmentTime),
-    (patient as any).smsConsent ? sendSMS(patient, doctor, appointmentTime) : Promise.resolve(),
+    (patient as PatientWithConsent).smsConsent ? sendSMS(patient, doctor, appointmentTime) : Promise.resolve(),
   ]);
 
   console.log("Notify results:", {
     toEmail: patient.email,
     email: results[0].status,
-    emailError: results[0].status === "rejected" ? (results[0] as any).reason?.message : undefined,
+    emailError: getRejectedMessage(results[0]),
     sms: results[1].status,
-    smsError: results[1].status === "rejected" ? (results[1] as any).reason?.message : undefined,
+    smsError: getRejectedMessage(results[1]),
   });
 
   return NextResponse.json({
@@ -54,7 +65,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function sendEmail(patient: PatientInfo, doctor: Doctor, appointmentTime: string) {
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return;
+  assertGmailConfig();
 
   const nodemailer = (await import("nodemailer")).default;
   const transporter = nodemailer.createTransport({
@@ -98,7 +109,7 @@ async function sendSMS(patient: PatientInfo, doctor: Doctor, appointmentTime: st
 }
 
 async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string, availableSlots: { date: string; time: string }[]) {
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return;
+  assertGmailConfig();
 
   const nodemailer = (await import("nodemailer")).default;
   const transporter = nodemailer.createTransport({
@@ -131,7 +142,7 @@ async function sendUnavailableEmail(patient: PatientInfo, preferredTime: string,
 }
 
 async function sendRefillEmail(patient: PatientInfo, medication: string) {
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return;
+  assertGmailConfig();
 
   const nodemailer = (await import("nodemailer")).default;
   const transporter = nodemailer.createTransport({
@@ -154,6 +165,18 @@ async function sendRefillEmail(patient: PatientInfo, medication: string) {
       <p>— ${PRACTICE_INFO.name} AI Assistant</p>
     `,
   });
+}
+
+function getRejectedMessage(result: SettledResult): string | undefined {
+  return result.status === "rejected" && result.reason instanceof Error
+    ? result.reason.message
+    : undefined;
+}
+
+function assertGmailConfig() {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+    throw new Error("Missing GMAIL_USER or GMAIL_APP_PASSWORD");
+  }
 }
 
 async function sendUnavailableSMS(patient: PatientInfo, preferredTime: string, availableSlots: { date: string; time: string }[]) {

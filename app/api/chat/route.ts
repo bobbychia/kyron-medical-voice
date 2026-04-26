@@ -8,6 +8,14 @@ import { PRACTICE_INFO } from "@/lib/doctors";
 
 const sessions = new Map<string, ConversationState>();
 
+type ConversationStateWithMeta = ConversationState & {
+  patient: ConversationState["patient"] & { smsConsent?: boolean };
+  preferredTimeRequest?: string;
+  preferredTimeNotFound?: boolean;
+  refillDoctor?: string;
+  refillMedication?: string;
+};
+
 export async function POST(req: NextRequest) {
   try {
     const { message, sessionId, model = "claude", history = [], smsConsent } = await req.json() as {
@@ -29,7 +37,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    state = await updateState(state, message);
+    state = await updateState(state, message, req.nextUrl.origin);
 
     let reply: string;
 
@@ -66,14 +74,15 @@ export async function POST(req: NextRequest) {
       reply = await callAI(model, aiMessages, systemPrompt);
     }
 
-    if (smsConsent !== undefined) (state.patient as any).smsConsent = smsConsent;
+    const stateWithMeta = state as ConversationStateWithMeta;
+    if (smsConsent !== undefined) stateWithMeta.patient.smsConsent = smsConsent;
     sessions.set(sessionId, state);
 
     // Persist session to DB
     await prisma.session.upsert({
       where: { id: sessionId },
-      update: { step: state.step, context: state as any, updatedAt: new Date() },
-      create: { id: sessionId, step: state.step, context: state as any },
+      update: { step: state.step, context: state as unknown as object, updatedAt: new Date() },
+      create: { id: sessionId, step: state.step, context: state as unknown as object },
     });
 
     const slotOff = state.slotOffset ?? 0;
@@ -99,7 +108,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function updateState(state: ConversationState, message: string): Promise<ConversationState> {
+async function updateState(state: ConversationState, message: string, origin: string): Promise<ConversationState> {
   const lower = message.toLowerCase().trim();
 
   switch (state.step) {
@@ -200,8 +209,9 @@ async function updateState(state: ConversationState, message: string): Promise<C
           state.selectedSlot = slot;
           state.step = "confirm_booking";
         } else {
-          (state as any).preferredTimeRequest = message;
-          (state as any).preferredTimeNotFound = true;
+          const stateWithMeta = state as ConversationStateWithMeta;
+          stateWithMeta.preferredTimeRequest = message;
+          stateWithMeta.preferredTimeNotFound = true;
         }
       }
       break;
@@ -246,17 +256,17 @@ async function updateState(state: ConversationState, message: string): Promise<C
 
     case "refill_collect_doctor": {
       if (message.trim().length > 2) {
-        (state as any).refillDoctor = message.trim();
+        (state as ConversationStateWithMeta).refillDoctor = message.trim();
         state.step = "refill_collect_medication";
       }
       break;
     }
 
     case "refill_collect_medication": {
-      (state as any).refillMedication = message.trim();
+      (state as ConversationStateWithMeta).refillMedication = message.trim();
       state.step = "refill_submitted";
-      // Fire-and-forget: notify the practice
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notify`, {
+      const notifyBaseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? origin;
+      const notifyRes = await fetch(`${notifyBaseUrl}/api/notify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -266,7 +276,13 @@ async function updateState(state: ConversationState, message: string): Promise<C
           type: "prescription_refill",
           preferredTime: message.trim(),
         }),
-      }).catch(() => {});
+      }).catch((error) => {
+        console.error("Refill notify error:", error);
+        return null;
+      });
+      if (notifyRes && !notifyRes.ok) {
+        console.error("Refill notify failed:", await notifyRes.text().catch(() => ""));
+      }
       break;
     }
 

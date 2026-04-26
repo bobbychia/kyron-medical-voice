@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ConversationState } from "@/types";
 import { getAvailableSlots, getAllDoctors } from "@/lib/doctorsDb";
 import { formatDisplay } from "@/lib/dateUtils";
+import { prisma } from "@/lib/db";
 
 function formatSlotForVoice(s: { date: string; time: string }, i: number): string {
   return `${i + 1}. ${formatDisplay(s.date, s.time)}`;
@@ -31,6 +32,17 @@ export async function POST(req: NextRequest) {
     const matchedSlots = state.matchedDoctor
       ? await getAvailableSlots(state.matchedDoctor.id, 6)
       : undefined;
+
+    const sessionId = state.sessionId;
+    if (!sessionId) {
+      return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
+    }
+
+    await prisma.session.upsert({
+      where: { id: sessionId },
+      update: { step: state.step ?? "greeting", context: state as unknown as object, updatedAt: new Date() },
+      create: { id: sessionId, step: state.step ?? "greeting", context: state as unknown as object },
+    });
 
     const p = state?.patient ?? { firstName: "", lastName: "", dob: "", phone: "", email: "", reason: "" };
     const missingFields: string[] = [];
@@ -66,7 +78,7 @@ export async function POST(req: NextRequest) {
         callAgentId: process.env.VOGENT_AGENT_ID,
         toNumber: phoneNumber,
         fromNumberId: process.env.VOGENT_FROM_NUMBER_ID,
-        webhookUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/api/voice/webhook?sessionId=${state.sessionId}`,
+        webhookUrl: `${process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin}/api/voice/webhook?sessionId=${sessionId}`,
         callAgentInput: {
           patientName: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
           specialties: "1. Bone & Joint Pain, 2. Heart & Chest, 3. Headache & Neurology, 4. Stomach & Digestion",
@@ -81,7 +93,7 @@ export async function POST(req: NextRequest) {
           slots2: matchedSlots && matchedSlots.length > 3
             ? matchedSlots.slice(3, 6).map((s, i) => formatSlotForVoice(s, i)).join(", ")
             : "no more slots available",
-          sessionId: state.sessionId,
+          sessionId,
         },
         agentOverrides: {
           openingLine: {

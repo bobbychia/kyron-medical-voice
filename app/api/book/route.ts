@@ -46,12 +46,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Fire-and-forget notifications
-    fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notify`, {
+    const notifyBaseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin;
+    const notifyRes = await fetch(`${notifyBaseUrl}/api/notify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ patient, doctor, slot }),
-    }).catch(console.error);
+    });
+
+    if (!notifyRes.ok) {
+      const notifyError = await notifyRes.text().catch(() => "");
+      console.error("Notify error:", notifyError);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
