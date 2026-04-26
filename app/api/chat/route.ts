@@ -14,14 +14,51 @@ type ConversationStateWithMeta = ConversationState & {
   preferredTimeNotFound?: boolean;
   refillDoctor?: string;
   refillMedication?: string;
+  refillNotified?: boolean;
 };
 
-function getNextRefillStep(state: ConversationStateWithMeta) {
+function getNextRefillStep(state: ConversationStateWithMeta): ConversationState["step"] {
   if (!state.patient.firstName || !state.patient.lastName) return "refill_collect_name";
   if (!state.patient.phone) return "refill_collect_phone";
   if (!state.refillDoctor) return "refill_collect_doctor";
   if (!state.refillMedication) return "refill_collect_medication";
   return "refill_submitted";
+}
+
+function getNextAppointmentStep(state: ConversationState): ConversationState["step"] {
+  if (!state.patient.reason || !state.matchedDoctor) return "collect_reason";
+  if (!state.patient.firstName || !state.patient.lastName) return "collect_name";
+  if (!state.patient.dob) return "collect_dob";
+  if (!state.patient.phone) return "collect_phone";
+  if (!state.patient.email) return "collect_email";
+  if (!state.selectedSlot) return "show_slots";
+  return "confirm_booking";
+}
+
+async function submitRefillRequest(state: ConversationStateWithMeta, medication: string, origin: string) {
+  if (state.refillNotified) return;
+
+  const notifyBaseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? origin;
+  const notifyRes = await fetch(`${notifyBaseUrl}/api/notify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      patient: state.patient,
+      doctor: {},
+      slot: {},
+      type: "prescription_refill",
+      preferredTime: medication,
+    }),
+  }).catch((error) => {
+    console.error("Refill notify error:", error);
+    return null;
+  });
+
+  if (notifyRes?.ok) {
+    state.refillNotified = true;
+  } else if (notifyRes) {
+    console.error("Refill notify failed:", await notifyRes.text().catch(() => ""));
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -110,6 +147,7 @@ export async function POST(req: NextRequest) {
         patient: state.patient,
         refillDoctor: stateWithMeta.refillDoctor,
         refillMedication: stateWithMeta.refillMedication,
+        refillNotified: stateWithMeta.refillNotified,
       },
     });
   } catch (error) {
@@ -125,11 +163,19 @@ async function updateState(state: ConversationState, message: string, origin: st
     case "greeting": {
       const num = parseInt(lower.trim());
       if (num === 1 || /appointment|schedule|book|see a doctor|visit/i.test(lower)) {
-        state.step = "collect_reason";
+        state.matchedDoctor = undefined;
+        state.selectedSlot = undefined;
+        state.slotOffset = 0;
+        state.patient.reason = undefined;
+        state.step = getNextAppointmentStep(state);
       } else if (num === 2 || /next available|soonest|earliest|first opening/i.test(lower)) {
         state.step = "next_available";
       } else if (num === 3 || /refill|prescription/i.test(lower)) {
-        state.step = getNextRefillStep(state as ConversationStateWithMeta);
+        const stateWithMeta = state as ConversationStateWithMeta;
+        state.step = getNextRefillStep(stateWithMeta);
+        if (state.step === "refill_submitted" && stateWithMeta.refillMedication) {
+          await submitRefillRequest(stateWithMeta, stateWithMeta.refillMedication, origin);
+        }
       } else if (num === 4 || /office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
         state.step = "office_info";
       } else {
@@ -143,7 +189,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       if (parts.length >= 2) {
         state.patient.firstName = parts[0];
         state.patient.lastName = parts.slice(1).join(" ");
-        state.step = "collect_dob";
+        state.step = getNextAppointmentStep(state);
       } else {
         state.step = "collect_name";
       }
@@ -154,7 +200,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       const dobMatch = message.match(/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/);
       if (dobMatch) {
         state.patient.dob = dobMatch[0];
-        state.step = "collect_phone";
+        state.step = getNextAppointmentStep(state);
       }
       break;
     }
@@ -163,7 +209,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       const phoneMatch = message.replace(/\D/g, "");
       if (phoneMatch.length >= 10) {
         state.patient.phone = phoneMatch;
-        state.step = "collect_email";
+        state.step = getNextAppointmentStep(state);
       }
       break;
     }
@@ -172,8 +218,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       const emailMatch = message.match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
       if (emailMatch) {
         state.patient.email = emailMatch[0];
-        // If reason already collected (specialty asked first), go straight to slots
-        state.step = state.matchedDoctor ? "show_slots" : "collect_reason";
+        state.step = getNextAppointmentStep(state);
       }
       break;
     }
@@ -184,8 +229,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       const doctor = await matchDoctorByReason(message);
       if (doctor) {
         state.matchedDoctor = doctor;
-        // If patient info already collected, go to slots; otherwise collect name first
-        state.step = (state.patient.firstName && state.patient.lastName) ? "show_slots" : "collect_name";
+        state.step = getNextAppointmentStep(state);
       } else {
         state.step = "match_doctor";
       }
@@ -250,7 +294,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       if (parts.length >= 2) {
         state.patient.firstName = parts[0];
         state.patient.lastName = parts.slice(1).join(" ");
-        state.step = "refill_collect_phone";
+        state.step = getNextRefillStep(state as ConversationStateWithMeta);
       }
       break;
     }
@@ -259,40 +303,25 @@ async function updateState(state: ConversationState, message: string, origin: st
       const digits = message.replace(/\D/g, "");
       if (digits.length >= 10) {
         state.patient.phone = digits;
-        state.step = "refill_collect_doctor";
+        state.step = getNextRefillStep(state as ConversationStateWithMeta);
       }
       break;
     }
 
     case "refill_collect_doctor": {
       if (message.trim().length > 2) {
-        (state as ConversationStateWithMeta).refillDoctor = message.trim();
-        state.step = "refill_collect_medication";
+        const stateWithMeta = state as ConversationStateWithMeta;
+        stateWithMeta.refillDoctor = message.trim();
+        state.step = getNextRefillStep(stateWithMeta);
       }
       break;
     }
 
     case "refill_collect_medication": {
-      (state as ConversationStateWithMeta).refillMedication = message.trim();
+      const stateWithMeta = state as ConversationStateWithMeta;
+      stateWithMeta.refillMedication = message.trim();
       state.step = "refill_submitted";
-      const notifyBaseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? origin;
-      const notifyRes = await fetch(`${notifyBaseUrl}/api/notify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patient: state.patient,
-          doctor: {},
-          slot: {},
-          type: "prescription_refill",
-          preferredTime: message.trim(),
-        }),
-      }).catch((error) => {
-        console.error("Refill notify error:", error);
-        return null;
-      });
-      if (notifyRes && !notifyRes.ok) {
-        console.error("Refill notify failed:", await notifyRes.text().catch(() => ""));
-      }
+      await submitRefillRequest(stateWithMeta, message.trim(), origin);
       break;
     }
 
@@ -306,14 +335,15 @@ async function updateState(state: ConversationState, message: string, origin: st
         state.selectedSlot = undefined;
         state.slotOffset = 0;
         state.patient.reason = undefined;
-        const p = state.patient;
-        state.step = (p.firstName && p.lastName && p.dob && p.phone && p.email)
-          ? "collect_reason"
-          : "collect_reason";
+        state.step = getNextAppointmentStep(state);
       } else if (num === 2 || /next available|soonest|earliest/i.test(lower)) {
         state.step = "next_available";
       } else if (num === 3 || /refill|prescription/i.test(lower)) {
-        state.step = getNextRefillStep(state as ConversationStateWithMeta);
+        const stateWithMeta = state as ConversationStateWithMeta;
+        state.step = getNextRefillStep(stateWithMeta);
+        if (state.step === "refill_submitted" && stateWithMeta.refillMedication) {
+          await submitRefillRequest(stateWithMeta, stateWithMeta.refillMedication, origin);
+        }
       } else if (num === 4 || /office|hour|location|address|where|open|clos/i.test(lower)) {
         state.step = "office_info";
       } else {
