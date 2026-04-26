@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
             specialty: prefSlot.doctor.specialty, bodyParts: prefSlot.doctor.bodyParts,
             bio: prefSlot.doctor.bio, availability: [],
           };
-          await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/book`, {
+          const bookRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/book`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -105,7 +105,30 @@ export async function POST(req: NextRequest) {
               reason: prefCtx.patient?.reason ?? "",
             }),
           }).catch(console.error);
-          console.log("Preferred slot booked for:", prefCtx.patient.email);
+          if (bookRes && (bookRes as Response).ok) {
+            console.log("Preferred slot booked for:", prefCtx.patient.email);
+          } else {
+            // Booking failed — notify with available slots instead
+            console.log("Preferred slot booking failed, sending unavailable notification");
+            const preferredDisplay = `${normalizedPrefDate} at ${ai_result.preferredTime}`;
+            let availableSlots: { date: string; time: string }[] = [];
+            if (prefCtx.matchedDoctor?.id) {
+              availableSlots = await prisma.slot.findMany({
+                where: { doctorId: prefCtx.matchedDoctor.id, available: true },
+                orderBy: [{ date: "asc" }, { time: "asc" }],
+                take: 6,
+                select: { date: true, time: true },
+              });
+            }
+            await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                patient: prefCtx.patient, doctor: prefCtx.matchedDoctor ?? {}, slot: {},
+                type: "slot_unavailable", preferredTime: preferredDisplay, availableSlots,
+              }),
+            }).catch(console.error);
+          }
         } else if (prefCtx.patient?.email) {
           // Slot not available — fetch available slots for matched doctor and notify
           const preferredDisplay = `${normalizedPrefDate} at ${ai_result.preferredTime}`;
