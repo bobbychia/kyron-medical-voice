@@ -108,14 +108,7 @@ async function updateState(state: ConversationState, message: string): Promise<C
       } else if (/office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
         state.step = "office_info";
       } else {
-        const parts = message.trim().split(/\s+/);
-        if (parts.length >= 2) {
-          state.patient.firstName = parts[0];
-          state.patient.lastName = parts.slice(1).join(" ");
-          state.step = "collect_dob";
-        } else {
-          state.step = "collect_name";
-        }
+        state.step = "collect_name";
       }
       break;
     }
