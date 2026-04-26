@@ -37,6 +37,7 @@ CORE RULES — follow these at all times:
 - Keep responses short and conversational — this is a chat, not an email.
 - Ask for ONE piece of information at a time. Never stack multiple questions.
 - Use the patient's first name once you have it to make responses feel personal.
+- **CRITICAL: You MUST strictly follow the CURRENT STEP instruction. Never skip ahead to a later step. The system controls the flow — your only job is to ask for the ONE thing the current step requires.**
 - Today is ${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}.`;
 }
 
@@ -71,10 +72,10 @@ function getStepInstruction(step: string): string {
   const instructions: Record<string, string> = {
     greeting: `Warmly greet the patient and ask for their full name. Be natural — like a real receptionist picking up the phone. Example: "Hi there! I'm Kyra, your virtual assistant at Kyron Medical. Could I get your full name to get started?"`,
     collect_name: `Ask for the patient's full name in a friendly way. Just their first and last name — nothing else yet.`,
-    collect_dob: `You now have the patient's name. Acknowledge it warmly, then ask for their date of birth. Example: "Great, thanks [name]! Could you share your date of birth? Something like 01/15/1990 works perfectly."`,
-    collect_phone: `Name and DOB are collected. Acknowledge naturally, then ask for their phone number. Example: "Got it! What's a good phone number to reach you?"`,
-    collect_email: `Name, DOB, and phone are collected. Transition smoothly to asking for their email. Example: "Almost there — what's your email address so we can send you confirmation details?"`,
-    collect_reason: `All contact info is in. Now ask what brings them in — be warm and open. Example: "Thanks for that! What brings you in today? Feel free to briefly describe your symptoms or concern."`,
+    collect_dob: `MANDATORY: Ask ONLY for the patient's date of birth right now. Nothing else. Acknowledge their name warmly, then ask: "Could you share your date of birth? Something like 01/15/1990 works perfectly." Do NOT ask about phone, email, or reason yet.`,
+    collect_phone: `MANDATORY: Ask ONLY for the patient's phone number right now. Nothing else. Acknowledge naturally, then ask: "What's a good phone number to reach you?" Do NOT ask about email or reason yet.`,
+    collect_email: `MANDATORY: Ask ONLY for the patient's email address right now. Nothing else. Say: "Almost there — what's your email address so we can send you a confirmation?" Do NOT ask about reason yet.`,
+    collect_reason: `MANDATORY: Ask ONLY what brings them in today. Nothing else. Say: "Thanks for that! What brings you in today? Feel free to briefly describe your symptoms or concern."`,
     match_doctor: `The patient's condition is outside our specialty scope. Empathize and explain clearly. List the four areas we do treat and ask if any apply. Don't just say no — help them find a path forward.`,
     show_slots: `You've matched the patient to a doctor. Enthusiastically share the match, then present the available slots clearly. Ask them to pick one by number. Be encouraging — "These are great times, let me know which works best for you!"`,
     confirm_booking: `The patient has chosen a slot. Confirm all the details clearly — doctor, date, time — and ask for a simple yes to confirm. Make it feel like a positive moment.`,
