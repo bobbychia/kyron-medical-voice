@@ -2,6 +2,12 @@
 
 This is a patient-facing scheduling demo for Kyron Medical. Patients can start in a web chat, complete intake, book an appointment, request a refill, check the next available appointment, or get office info. They can also switch from chat to a phone call through Vogent while keeping the same conversation context.
 
+Live app:
+
+```text
+https://3.19.15.231.nip.io
+```
+
 The app is deployed on AWS EC2 and uses AWS RDS for persistent data.
 
 ## What It Does
