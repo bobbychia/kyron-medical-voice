@@ -45,12 +45,14 @@ export async function POST(req: NextRequest) {
         })
       );
       const available = lines.filter(Boolean);
+      const menu = `\n\nIs there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location`;
       reply = available.length > 0
-        ? `Here are the soonest openings we have:\n\n${available.join("\n\n")}\n\nWhich one works for you, or is there a particular specialty you need? Is there anything else I can help you with?`
-        : "I'm sorry, there are no available slots at the moment. Please call us at " + PRACTICE_INFO.phone + " to check availability. Is there anything else I can help you with?";
+        ? `Here are the soonest openings we have:\n\n${available.join("\n\n")}${menu}`
+        : `I'm sorry, there are no available slots at the moment. Please call us at ${PRACTICE_INFO.phone} to check availability.${menu}`;
       state.step = "general";
     } else if (state.step === "office_info") {
-      reply = `Here's our practice information:\n\n📍 **Address:** ${PRACTICE_INFO.address}\n📞 **Phone:** ${PRACTICE_INFO.phone}\n🕐 **Hours:** ${PRACTICE_INFO.hours}\n\nIs there anything else I can help you with?`;
+      const menu = `\n\nIs there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location`;
+      reply = `Here's our practice information:\n\n📍 **Address:** ${PRACTICE_INFO.address}\n📞 **Phone:** ${PRACTICE_INFO.phone}\n🕐 **Hours:** ${PRACTICE_INFO.hours}${menu}`;
     } else {
       const aiMessages = history.map((m) => ({
         role: m.role as "user" | "assistant",
@@ -269,24 +271,22 @@ async function updateState(state: ConversationState, message: string): Promise<C
     case "office_info":
     case "refill_submitted":
     case "general": {
-      // User wants to start a new flow after a completed one
-      if (/refill|prescription/i.test(lower)) {
-        state.step = "refill_collect_name";
-      } else if (/next available|soonest|earliest/i.test(lower)) {
-        state.step = "next_available";
-      } else if (/office|hour|location|address|where|open|clos/i.test(lower)) {
-        state.step = "office_info";
-      } else if (/appointment|schedule|book|see a doctor|visit/i.test(lower)) {
-        // Reset booking-related state and restart appointment flow
+      const num = parseInt(lower.trim());
+      if (num === 1 || /appointment|schedule|book|see a doctor|visit/i.test(lower)) {
         state.matchedDoctor = undefined;
         state.selectedSlot = undefined;
         state.slotOffset = 0;
         state.patient.reason = undefined;
-        // Skip re-collecting info we already have
         const p = state.patient;
         state.step = (p.firstName && p.lastName && p.dob && p.phone && p.email)
           ? "collect_reason"
-          : "collect_name";
+          : "collect_reason";
+      } else if (num === 2 || /next available|soonest|earliest/i.test(lower)) {
+        state.step = "next_available";
+      } else if (num === 3 || /refill|prescription/i.test(lower)) {
+        state.step = "refill_collect_name";
+      } else if (num === 4 || /office|hour|location|address|where|open|clos/i.test(lower)) {
+        state.step = "office_info";
       } else {
         state.step = "general";
       }

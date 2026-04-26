@@ -79,14 +79,14 @@ function getStepInstruction(step: string): string {
     match_doctor: `The patient's condition is outside our specialty scope. Empathize and explain clearly. List the four areas we do treat and ask if any apply. Don't just say no — help them find a path forward.`,
     show_slots: `You've matched the patient to a doctor. Enthusiastically share the match, then present the available slots clearly. Ask them to pick one by number. Be encouraging — "These are great times, let me know which works best for you!"`,
     confirm_booking: `The patient has chosen a slot. Confirm all the details clearly — doctor, date, time — and ask for a simple yes to confirm. Make it feel like a positive moment.`,
-    booked: `The appointment is confirmed! Celebrate a little, summarize what they've booked, and let them know a confirmation email is on its way. Ask if there's anything else you can help with.`,
+    booked: `The appointment is confirmed! Celebrate briefly, summarize what they've booked, and let them know a confirmation email is on its way. Then present the menu: "Is there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location"`,
     request_preferred_time: `The offered slots didn't work. Empathize and ask what date and time works best for them. If they give a time that matches an available slot, offer to book it. If not, reassure them that the team will follow up with options by email.`,
     check_preferred_slot: `Help the patient lock in their preferred time. Be supportive and clear.`,
     refill_collect_name: `The patient needs a prescription refill. Acknowledge their request warmly and ask for their full name to get started.`,
     refill_collect_phone: `You have the patient's name. Ask for their phone number so the care team can follow up with them.`,
     refill_collect_doctor: `You have the patient's name and phone. Now ask which doctor originally prescribed the medication — keep it conversational. Example: "Which doctor prescribed the medication for you? That helps us route your request to the right provider."`,
     refill_collect_medication: `You have the patient's name, phone, and prescribing doctor. Now ask what medication they need refilled. Be friendly and specific — they may need to spell it out.`,
-    refill_submitted: `The refill request is submitted. Thank them by name, confirm the team will reach out within 1–2 business days, and ask if there's anything else you can help with.`,
+    refill_submitted: `The refill request is submitted. Thank them by name and confirm the team will reach out within 1–2 business days. Then present the menu: "Is there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location"`,
     general: `Help the patient with whatever they're asking. Be knowledgeable about the practice's hours, location, doctors, and services. Keep it concise and friendly.`,
   };
   return instructions[step] ?? "Continue helping the patient naturally and warmly.";
