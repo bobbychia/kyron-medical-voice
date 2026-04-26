@@ -1,13 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Phone, Loader2, Bot, User, Stethoscope, RotateCcw } from "lucide-react";
+import { Send, Loader2, Bot, User, Stethoscope, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { Message, AIModel, ConversationState, AvailabilitySlot, Doctor } from "@/types";
-import { formatDisplay } from "@/lib/dateUtils";
 import { DOCTORS } from "@/lib/doctors";
 import PhoneCallButton from "@/components/PhoneCallButton";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
@@ -99,19 +97,6 @@ export default function ChatInterface() {
 
       setMessages((prev) => [...prev, assistantMessage]);
       setState(data.state);
-
-      // Auto-book when confirmed
-      if (data.state?.step === "booked" && data.state?.patient && data.state?.matchedDoctor && data.state?.selectedSlot) {
-        await fetch("/api/book", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            patient: data.state.patient,
-            doctor: data.state.matchedDoctor,
-            slot: data.state.selectedSlot,
-          }),
-        });
-      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -126,7 +111,7 @@ export default function ChatInterface() {
       setLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, loading, messages, model, sessionId]);
+  }, [input, loading, messages, model, sessionId, smsConsent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

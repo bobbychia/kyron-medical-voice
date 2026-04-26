@@ -15,6 +15,8 @@ type ConversationStateWithMeta = ConversationState & {
   refillDoctor?: string;
   refillMedication?: string;
   refillNotified?: boolean;
+  bookingConflict?: boolean;
+  bookingConfirmed?: boolean;
 };
 
 function getNextRefillStep(state: ConversationStateWithMeta): ConversationState["step"] {
@@ -61,6 +63,39 @@ async function submitRefillRequest(state: ConversationStateWithMeta, medication:
   }
 }
 
+async function confirmAppointmentBooking(state: ConversationStateWithMeta, origin: string): Promise<boolean> {
+  if (state.bookingConfirmed) return true;
+  if (!state.patient.email || !state.matchedDoctor || !state.selectedSlot) return false;
+
+  const bookBaseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? origin;
+  const bookRes = await fetch(`${bookBaseUrl}/api/book`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      patient: state.patient,
+      doctor: state.matchedDoctor,
+      slot: state.selectedSlot,
+      reason: state.patient.reason ?? "",
+    }),
+  }).catch((error) => {
+    console.error("Chat booking error:", error);
+    return null;
+  });
+
+  if (bookRes?.ok) {
+    state.bookingConfirmed = true;
+    return true;
+  }
+
+  if (bookRes?.status === 409) {
+    state.bookingConflict = true;
+    return false;
+  }
+
+  console.error("Chat booking failed:", await bookRes?.text().catch(() => ""));
+  return false;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { message, sessionId, model = "claude", history = [], smsConsent } = await req.json() as {
@@ -86,7 +121,12 @@ export async function POST(req: NextRequest) {
 
     let reply: string;
 
-    if (state.step === "next_available") {
+    const stateWithMeta = state as ConversationStateWithMeta;
+
+    if (stateWithMeta.bookingConflict) {
+      reply = "I'm sorry, that time was just booked by someone else. Here are the latest available times. Please choose another option.";
+      stateWithMeta.bookingConflict = false;
+    } else if (state.step === "next_available") {
       const { getAllDoctors } = await import("@/lib/doctorsDb");
       const allDoctors = await getAllDoctors();
       const lines = await Promise.all(
@@ -119,7 +159,6 @@ export async function POST(req: NextRequest) {
       reply = await callAI(model, aiMessages, systemPrompt);
     }
 
-    const stateWithMeta = state as ConversationStateWithMeta;
     if (smsConsent !== undefined) stateWithMeta.patient.smsConsent = smsConsent;
     sessions.set(sessionId, state);
 
@@ -148,6 +187,7 @@ export async function POST(req: NextRequest) {
         refillDoctor: stateWithMeta.refillDoctor,
         refillMedication: stateWithMeta.refillMedication,
         refillNotified: stateWithMeta.refillNotified,
+        bookingConfirmed: stateWithMeta.bookingConfirmed,
       },
     });
   } catch (error) {
@@ -282,7 +322,14 @@ async function updateState(state: ConversationState, message: string, origin: st
 
     case "confirm_booking": {
       if (lower.includes("yes") || lower.includes("confirm") || lower.includes("book")) {
-        state.step = "booked";
+        const stateWithMeta = state as ConversationStateWithMeta;
+        const booked = await confirmAppointmentBooking(stateWithMeta, origin);
+        if (booked) {
+          state.step = "booked";
+        } else {
+          state.selectedSlot = undefined;
+          state.step = "show_slots";
+        }
       } else if (lower.includes("no") || lower.includes("change")) {
         state.step = "show_slots";
       }

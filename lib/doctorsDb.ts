@@ -40,18 +40,12 @@ export async function getAvailableSlots(doctorId: string, limit = 5): Promise<Av
 }
 
 export async function bookSlot(doctorId: string, date: string, time: string): Promise<boolean> {
-  const slot = await prisma.slot.findFirst({
+  const result = await prisma.slot.updateMany({
     where: { doctorId, date, time, available: true },
-  });
-
-  if (!slot) return false;
-
-  await prisma.slot.update({
-    where: { id: slot.id },
     data: { available: false },
   });
 
-  return true;
+  return result.count === 1;
 }
 
 export async function checkSlotAvailable(doctorId: string, date: string, time: string): Promise<AvailabilitySlot | null> {
