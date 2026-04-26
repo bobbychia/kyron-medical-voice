@@ -70,7 +70,7 @@ STRICT RULES:
 
 function getStepInstruction(step: string): string {
   const instructions: Record<string, string> = {
-    greeting: `Warmly greet the patient and ask for their full name. Be natural — like a real receptionist picking up the phone. Example: "Hi there! I'm Kyra, your virtual assistant at Kyron Medical. Could I get your full name to get started?"`,
+    greeting: `Warmly greet the patient and present these 4 options. Say: "Hi there! I'm Kyra, your virtual assistant at Kyron Medical. How can I help you today?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location" Wait for their selection — do NOT ask for their name yet.`,
     collect_name: `Ask for the patient's full name in a friendly way. Just their first and last name — nothing else yet.`,
     collect_dob: `MANDATORY: Ask ONLY for the patient's date of birth right now. Nothing else. Acknowledge their name warmly, then ask: "Could you share your date of birth? Something like 01/15/1990 works perfectly." Do NOT ask about phone, email, or reason yet.`,
     collect_phone: `MANDATORY: Ask ONLY for the patient's phone number right now. Nothing else. Acknowledge naturally, then ask: "What's a good phone number to reach you?" Do NOT ask about email or reason yet.`,

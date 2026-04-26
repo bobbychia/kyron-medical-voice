@@ -104,14 +104,17 @@ async function updateState(state: ConversationState, message: string): Promise<C
 
   switch (state.step) {
     case "greeting": {
-      if (/refill|prescription/i.test(lower)) {
-        state.step = "refill_collect_name";
-      } else if (/next available|soonest|earliest|first opening/i.test(lower)) {
+      const num = parseInt(lower.trim());
+      if (num === 1 || /appointment|schedule|book|see a doctor|visit/i.test(lower)) {
+        state.step = "collect_reason";
+      } else if (num === 2 || /next available|soonest|earliest|first opening/i.test(lower)) {
         state.step = "next_available";
-      } else if (/office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
+      } else if (num === 3 || /refill|prescription/i.test(lower)) {
+        state.step = "refill_collect_name";
+      } else if (num === 4 || /office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
         state.step = "office_info";
       } else {
-        state.step = "collect_reason";
+        state.step = "greeting"; // stay and wait for valid selection
       }
       break;
     }
