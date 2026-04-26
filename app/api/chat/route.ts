@@ -285,8 +285,19 @@ async function updateState(state: ConversationState, message: string, origin: st
     case "show_slots": {
       const slotIndex = parseInt(lower) - 1;
       const wantsMore = /more|another|different|other|next|else/i.test(lower);
+      const parsedSlot = parseDateTimeFromMessage(message);
 
-      if (!isNaN(slotIndex) && state.matchedDoctor) {
+      if (parsedSlot && state.matchedDoctor) {
+        const slot = await checkSlotAvailable(state.matchedDoctor.id, parsedSlot.date, parsedSlot.time);
+        if (slot) {
+          state.selectedSlot = slot;
+          state.step = "confirm_booking";
+        } else {
+          const stateWithMeta = state as ConversationStateWithMeta;
+          stateWithMeta.bookingConflict = true;
+          state.step = "show_slots";
+        }
+      } else if (!isNaN(slotIndex) && state.matchedDoctor) {
         const offset = state.slotOffset ?? 0;
         const slots = await getAvailableSlots(state.matchedDoctor.id, offset + 3);
         const visibleSlots = slots.slice(offset);

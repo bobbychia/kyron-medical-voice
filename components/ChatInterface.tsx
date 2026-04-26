@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Message, AIModel, ConversationState, AvailabilitySlot, Doctor } from "@/types";
+import { formatDisplay } from "@/lib/dateUtils";
 import { DOCTORS } from "@/lib/doctors";
 import PhoneCallButton from "@/components/PhoneCallButton";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
@@ -325,8 +326,7 @@ export default function ChatInterface() {
               doctor={state.matchedDoctor}
               slots={state.availableSlots}
               onSelect={(slot) => {
-                const idx = state.availableSlots!.indexOf(slot) + 1;
-                sendMessage(String(idx));
+                sendMessage(`I choose ${formatDisplay(slot.date, slot.time)}`);
               }}
               onRequestMore={() => sendMessage("none of these work, show me more options")}
             />
