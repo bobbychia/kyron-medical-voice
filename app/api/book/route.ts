@@ -22,10 +22,10 @@ export async function POST(req: NextRequest) {
       where: { email: patient.email },
       update: {},
       create: {
-        firstName: patient.firstName,
-        lastName: patient.lastName,
-        dob: patient.dob,
-        phone: patient.phone,
+        firstName: patient.firstName ?? "",
+        lastName: patient.lastName ?? "",
+        dob: patient.dob ?? "",
+        phone: patient.phone ?? "",
         email: patient.email,
       },
     });

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       ? await getAvailableSlots(state.matchedDoctor.id, 6)
       : undefined;
 
-    const p = state?.patient ?? {};
+    const p = state?.patient ?? { firstName: "", lastName: "", dob: "", phone: "", email: "", reason: "" };
     const missingFields: string[] = [];
     if (!p.firstName || !p.lastName) missingFields.push("full name");
     if (!p.dob) missingFields.push("date of birth");
