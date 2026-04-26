@@ -1,36 +1,174 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kyron Medical Voice
 
-## Getting Started
+This is a patient-facing scheduling demo for Kyron Medical. Patients can start in a web chat, complete intake, book an appointment, request a refill, check the next available appointment, or get office info. They can also switch from chat to a phone call through Vogent while keeping the same conversation context.
 
-First, run the development server:
+The app is deployed on AWS EC2 and uses AWS RDS for persistent data.
+
+## What It Does
+
+- Appointment scheduling with patient intake:
+  - name
+  - date of birth
+  - phone
+  - email
+  - reason for visit
+- Doctor matching based on the patient's concern/body part
+- Live availability pulled from the database
+- Slot booking with double-booking protection
+- Confirmation emails through Gmail/Nodemailer
+- Optional SMS reminders through Twilio
+- Prescription refill request flow
+- Office hours and location flow
+- "Next available appointment" lookup
+- Voice handoff through Vogent
+- Admin dashboard for changing provider availability
+
+## Main Flows
+
+### 1. Schedule an Appointment
+
+The assistant collects the required appointment fields, matches the patient to one of four doctors, shows available slots, asks for confirmation, and then books the slot.
+
+The final booking happens server-side before the assistant says the appointment is confirmed. This avoids stale slot issues when two browser windows try to book the same time.
+
+### 2. Check Next Available
+
+The assistant checks the database for the earliest open slot and returns it directly.
+
+### 3. Prescription Refill
+
+The refill flow is separate from appointment scheduling. It does not ask for appointment reason, DOB, specialty, or appointment slots. It only collects:
+
+- name
+- phone
+- prescribing doctor
+- medication name
+
+Then it sends the request to the practice email.
+
+### 4. Office Hours and Location
+
+The assistant gives the practice address, phone number, and hours, then returns to the main menu.
+
+## Voice Handoff
+
+The "Call me" button sends the current chat state to Vogent. The voice agent receives:
+
+- current flow
+- patient context
+- missing fields
+- matched doctor
+- available slots
+- refill fields when relevant
+
+The Vogent prompt should use the `flow` and `taskInstructions` fields first. Without that, the voice agent may fall back into the wrong flow.
+
+## Tech Stack
+
+- Next.js App Router
+- React
+- TypeScript
+- Tailwind CSS
+- Prisma
+- PostgreSQL on AWS RDS
+- AWS EC2
+- PM2
+- Vogent for voice AI
+- Nodemailer/Gmail for email
+- Twilio for SMS
+- Claude, OpenAI, and Gemini support for chat model comparison
+
+## Local Setup
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create a `.env` file with the required keys:
+
+```bash
+DATABASE_URL=
+NEXT_PUBLIC_BASE_URL=
+
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+
+VOGENT_API_KEY=
+VOGENT_AGENT_ID=
+VOGENT_FROM_NUMBER_ID=
+
+GMAIL_USER=
+GMAIL_APP_PASSWORD=
+
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+```
+
+Run the database seed if needed:
+
+```bash
+npm run db:seed
+```
+
+Start the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Admin
 
-## Learn More
+The admin dashboard is available at:
 
-To learn more about Next.js, take a look at the following resources:
+```text
+/admin/login
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+From there, provider slots can be added, removed, or toggled available/unavailable. The chat flow reads availability from the database, so changes affect new slot lookups immediately.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deployment
 
-## Deploy on Vercel
+Pushes to `main` deploy through GitHub Actions:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```text
+git pull
+npm install
+npm run build
+pm2 restart kyron-medical --update-env
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The workflow is in:
+
+```text
+.github/workflows/deploy.yml
+```
+
+## Notes
+
+- Local testing may still use the production RDS database depending on the `.env` file, so booking a slot locally can affect the live availability.
+- Vogent cannot call back to `localhost`; voice testing needs the deployed URL or a tunnel.
+- SMS depends on the Twilio number being valid for the destination country.
+- Email sending depends on a Gmail app password, not the normal Gmail account password.
+
+## Useful Commands
+
+```bash
+npm run dev
+npm run build
+npm run lint
+npm run db:seed
+npm run db:studio
+```
