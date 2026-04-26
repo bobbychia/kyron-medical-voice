@@ -126,6 +126,9 @@ export async function POST(req: NextRequest) {
     if (stateWithMeta.bookingConflict) {
       reply = "I'm sorry, that time was just booked by someone else. Here are the latest available times. Please choose another option.";
       stateWithMeta.bookingConflict = false;
+    } else if (stateWithMeta.preferredTimeNotFound) {
+      reply = "I'm sorry, that time is not available. Please choose one of the currently available times, or share another preferred date and time and we'll keep checking.";
+      stateWithMeta.preferredTimeNotFound = false;
     } else if (state.step === "next_available") {
       const { getAllDoctors } = await import("@/lib/doctorsDb");
       const allDoctors = await getAllDoctors();
@@ -323,6 +326,8 @@ async function updateState(state: ConversationState, message: string, origin: st
           const stateWithMeta = state as ConversationStateWithMeta;
           stateWithMeta.preferredTimeRequest = message;
           stateWithMeta.preferredTimeNotFound = true;
+          state.selectedSlot = undefined;
+          state.step = "request_preferred_time";
         }
       }
       break;
