@@ -150,21 +150,18 @@ export async function POST(req: NextRequest) {
       reply = "I'm sorry, that time is not available. Please choose one of the currently available times, or share another preferred date and time and we'll keep checking.";
       stateWithMeta.preferredTimeNotFound = false;
     } else if (state.step === "next_available") {
-      const { getAllDoctors } = await import("@/lib/doctorsDb");
-      const allDoctors = await getAllDoctors();
-      const lines = await Promise.all(
-        allDoctors.map(async (doc) => {
-          const slots = await getAvailableSlots(doc.id, 1);
-          if (slots.length === 0) return null;
-          const { formatDisplay } = await import("@/lib/dateUtils");
-          return `**${formatDisplay(slots[0].date, slots[0].time)}** with ${doc.name} (${doc.specialty})`;
-        })
-      );
-      const available = lines.filter(Boolean);
+      const nextSlot = await prisma.slot.findFirst({
+        where: { available: true },
+        orderBy: [{ date: "asc" }, { time: "asc" }],
+        include: { doctor: true },
+      });
       const menu = `\n\nIs there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location`;
-      reply = available.length > 0
-        ? `Here are the soonest openings we have:\n\n${available.join("\n\n")}${menu}`
-        : `I'm sorry, there are no available slots at the moment. Please call us at ${PRACTICE_INFO.phone} to check availability.${menu}`;
+      if (nextSlot) {
+        const { formatDisplay } = await import("@/lib/dateUtils");
+        reply = `The next available appointment is **${formatDisplay(nextSlot.date, nextSlot.time)}** with ${nextSlot.doctor.name} (${nextSlot.doctor.specialty}).${menu}`;
+      } else {
+        reply = `I'm sorry, there are no available slots at the moment. Please call us at ${PRACTICE_INFO.phone} to check availability.${menu}`;
+      }
       state.step = "general";
     } else if (state.step === "office_info") {
       const menu = `\n\nIs there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location`;
@@ -224,15 +221,15 @@ async function updateState(state: ConversationState, message: string, origin: st
   switch (state.step) {
     case "greeting": {
       const num = parseInt(lower.trim());
-      if (num === 1 || /appointment|schedule|book|see a doctor|visit/i.test(lower)) {
+      if (num === 2 || /next available|soonest|earliest|first opening/i.test(lower)) {
+        state.step = "next_available";
+      } else if (num === 1 || /appointment|schedule|book|see a doctor|visit/i.test(lower)) {
         state.matchedDoctor = undefined;
         state.selectedSlot = undefined;
         state.slotOffset = 0;
         state.patient.reason = undefined;
         (state as ConversationStateWithMeta).offeredSlots = undefined;
         state.step = getNextAppointmentStep(state);
-      } else if (num === 2 || /next available|soonest|earliest|first opening/i.test(lower)) {
-        state.step = "next_available";
       } else if (num === 3 || /refill|prescription/i.test(lower)) {
         const stateWithMeta = state as ConversationStateWithMeta;
         state.step = getNextRefillStep(stateWithMeta);
@@ -417,15 +414,15 @@ async function updateState(state: ConversationState, message: string, origin: st
     case "refill_submitted":
     case "general": {
       const num = parseInt(lower.trim());
-      if (num === 1 || /appointment|schedule|book|see a doctor|visit/i.test(lower)) {
+      if (num === 2 || /next available|soonest|earliest|first opening/i.test(lower)) {
+        state.step = "next_available";
+      } else if (num === 1 || /appointment|schedule|book|see a doctor|visit/i.test(lower)) {
         state.matchedDoctor = undefined;
         state.selectedSlot = undefined;
         state.slotOffset = 0;
         state.patient.reason = undefined;
         (state as ConversationStateWithMeta).offeredSlots = undefined;
         state.step = getNextAppointmentStep(state);
-      } else if (num === 2 || /next available|soonest|earliest/i.test(lower)) {
-        state.step = "next_available";
       } else if (num === 3 || /refill|prescription/i.test(lower)) {
         const stateWithMeta = state as ConversationStateWithMeta;
         state.step = getNextRefillStep(stateWithMeta);
