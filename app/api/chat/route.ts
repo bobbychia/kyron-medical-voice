@@ -16,6 +16,14 @@ type ConversationStateWithMeta = ConversationState & {
   refillMedication?: string;
 };
 
+function getNextRefillStep(state: ConversationStateWithMeta) {
+  if (!state.patient.firstName || !state.patient.lastName) return "refill_collect_name";
+  if (!state.patient.phone) return "refill_collect_phone";
+  if (!state.refillDoctor) return "refill_collect_doctor";
+  if (!state.refillMedication) return "refill_collect_medication";
+  return "refill_submitted";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { message, sessionId, model = "claude", history = [], smsConsent } = await req.json() as {
@@ -100,6 +108,8 @@ export async function POST(req: NextRequest) {
         availableSlots,
         selectedSlot: state.selectedSlot,
         patient: state.patient,
+        refillDoctor: stateWithMeta.refillDoctor,
+        refillMedication: stateWithMeta.refillMedication,
       },
     });
   } catch (error) {
@@ -119,7 +129,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       } else if (num === 2 || /next available|soonest|earliest|first opening/i.test(lower)) {
         state.step = "next_available";
       } else if (num === 3 || /refill|prescription/i.test(lower)) {
-        state.step = "refill_collect_name";
+        state.step = getNextRefillStep(state as ConversationStateWithMeta);
       } else if (num === 4 || /office|hour|location|address|where|direction|open|clos|weekend/i.test(lower)) {
         state.step = "office_info";
       } else {
@@ -303,7 +313,7 @@ async function updateState(state: ConversationState, message: string, origin: st
       } else if (num === 2 || /next available|soonest|earliest/i.test(lower)) {
         state.step = "next_available";
       } else if (num === 3 || /refill|prescription/i.test(lower)) {
-        state.step = "refill_collect_name";
+        state.step = getNextRefillStep(state as ConversationStateWithMeta);
       } else if (num === 4 || /office|hour|location|address|where|open|clos/i.test(lower)) {
         state.step = "office_info";
       } else {

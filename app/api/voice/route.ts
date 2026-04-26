@@ -4,69 +4,104 @@ import { getAvailableSlots, getAllDoctors } from "@/lib/doctorsDb";
 import { formatDisplay } from "@/lib/dateUtils";
 import { prisma } from "@/lib/db";
 
+type VoiceState = ConversationState & {
+  refillDoctor?: string;
+  refillMedication?: string;
+};
+
 function formatSlotForVoice(s: { date: string; time: string }, i: number): string {
   return `${i + 1}. ${formatDisplay(s.date, s.time)}`;
+}
+
+function isRefillFlow(state: VoiceState): boolean {
+  return state.step?.startsWith("refill_") || Boolean(state.refillDoctor || state.refillMedication);
+}
+
+function getRefillMissingFields(state: VoiceState): string[] {
+  const p = state.patient ?? {};
+  const missingFields: string[] = [];
+  if (!p.firstName || !p.lastName) missingFields.push("full name");
+  if (!p.phone) missingFields.push("phone number");
+  if (!state.refillDoctor) missingFields.push("prescribing doctor");
+  if (!state.refillMedication) missingFields.push("medication name");
+  return missingFields;
+}
+
+function getAppointmentMissingFields(state: VoiceState): string[] {
+  const p = state.patient ?? {};
+  const missingFields: string[] = [];
+  if (!p.firstName || !p.lastName) missingFields.push("full name");
+  if (!p.dob) missingFields.push("date of birth");
+  if (!p.phone) missingFields.push("phone number");
+  if (!p.email) missingFields.push("email address");
+  if (!p.reason) missingFields.push("reason for visit");
+  return missingFields;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { phoneNumber, state } = await req.json() as {
       phoneNumber: string;
-      state: ConversationState;
+      state: VoiceState;
     };
-
-    // Always pre-load slots for all doctors so AI doesn't need to call any function
-    const allDoctors = await getAllDoctors();
-    const slotLines = await Promise.all(
-      allDoctors.map(async (doc) => {
-        const slots = await getAvailableSlots(doc.id, 3);
-        const slotStr = slots.length > 0
-          ? slots.map((s, i) => formatSlotForVoice(s, i)).join(", ")
-          : "no slots available";
-        return `${doc.specialty} - ${doc.name}: ${slotStr}`;
-      })
-    );
-    const allSlotsFormatted = slotLines.join(" | ");
-
-    // If doctor already matched, also get their next-3 slots for swapping
-    const matchedSlots = state.matchedDoctor
-      ? await getAvailableSlots(state.matchedDoctor.id, 6)
-      : undefined;
 
     const sessionId = state.sessionId;
     if (!sessionId) {
       return NextResponse.json({ error: "Missing sessionId" }, { status: 400 });
     }
 
+    const existingSession = await prisma.session.findUnique({ where: { id: sessionId } });
+    const existingContext = (existingSession?.context as unknown as Partial<VoiceState>) ?? {};
+    const mergedState: VoiceState = {
+      ...existingContext,
+      ...state,
+      patient: {
+        ...(existingContext.patient ?? {}),
+        ...(state.patient ?? {}),
+      },
+      refillDoctor: state.refillDoctor ?? existingContext.refillDoctor,
+      refillMedication: state.refillMedication ?? existingContext.refillMedication,
+      sessionId,
+      step: state.step ?? existingContext.step ?? "greeting",
+    } as VoiceState;
+
     await prisma.session.upsert({
       where: { id: sessionId },
-      update: { step: state.step ?? "greeting", context: state as unknown as object, updatedAt: new Date() },
-      create: { id: sessionId, step: state.step ?? "greeting", context: state as unknown as object },
+      update: { step: mergedState.step ?? "greeting", context: mergedState as unknown as object, updatedAt: new Date() },
+      create: { id: sessionId, step: mergedState.step ?? "greeting", context: mergedState as unknown as object },
     });
 
-    const p = state?.patient ?? { firstName: "", lastName: "", dob: "", phone: "", email: "", reason: "" };
-    const missingFields: string[] = [];
-    if (!p.firstName || !p.lastName) missingFields.push("full name");
-    if (!p.dob) missingFields.push("date of birth");
-    if (!p.phone) missingFields.push("phone number");
-    if (!p.email) missingFields.push("email address");
-    if (!p.reason) missingFields.push("reason for visit");
+    const p = mergedState?.patient ?? { firstName: "", lastName: "", dob: "", phone: "", email: "", reason: "" };
+    const refillFlow = isRefillFlow(mergedState);
+    const missingFields = refillFlow ? getRefillMissingFields(mergedState) : getAppointmentMissingFields(mergedState);
+
+    const allSlotsFormatted = refillFlow ? "" : await getAllSlotsFormatted();
+    const matchedSlots = !refillFlow && mergedState.matchedDoctor
+      ? await getAvailableSlots(mergedState.matchedDoctor.id, 6)
+      : undefined;
 
     const contextSummary = [
       p.firstName && p.lastName ? `Name: ${p.firstName} ${p.lastName}` : null,
       p.dob ? `DOB: ${p.dob}` : null,
       p.phone ? `Phone: ${p.phone}` : null,
       p.email ? `Email: ${p.email}` : null,
-      p.reason ? `Reason: ${p.reason}` : null,
-      state.matchedDoctor ? `Matched doctor: ${state.matchedDoctor.name} (${state.matchedDoctor.specialty})` : null,
+      !refillFlow && p.reason ? `Reason: ${p.reason}` : null,
+      refillFlow ? "Request type: prescription refill" : null,
+      refillFlow && mergedState.refillDoctor ? `Prescribing doctor: ${mergedState.refillDoctor}` : null,
+      refillFlow && mergedState.refillMedication ? `Medication: ${mergedState.refillMedication}` : null,
+      mergedState.matchedDoctor ? `Matched doctor: ${mergedState.matchedDoctor.name} (${mergedState.matchedDoctor.specialty})` : null,
     ].filter(Boolean).join(", ");
 
-    const hasContext = !!(p.firstName || p.reason || p.email);
-    const openingMessage = !hasContext
-      ? `Hello, this is Kyra calling from Kyron Medical. How can I help you today? I can assist with: scheduling an appointment, checking next available times, prescription refills, or office hours and location.`
-      : missingFields.length > 0
-        ? `Hello ${p.firstName ?? "there"}, this is Kyra calling from Kyron Medical. I'm following up on your request. I still need to collect your ${missingFields.join(" and ")}. Let's get that done quickly.`
-        : `Hello ${p.firstName}, this is Kyra calling from Kyron Medical. We've matched you with ${state.matchedDoctor?.name ?? "a specialist"} for your ${p.reason ?? "visit"} concern. I have some available appointment times for you.`;
+    const hasContext = !!(p.firstName || p.reason || p.email || refillFlow);
+    const openingMessage = refillFlow
+      ? missingFields.length > 0
+        ? `Hello ${p.firstName ?? "there"}, this is Kyra calling from Kyron Medical about your prescription refill request. I already have ${contextSummary || "some details"} from chat. I only need your ${missingFields.join(" and ")}.`
+        : `Hello ${p.firstName ?? "there"}, this is Kyra calling from Kyron Medical about your prescription refill request. I have the details we need and will submit it to the care team.`
+      : !hasContext
+        ? `Hello, this is Kyra calling from Kyron Medical. How can I help you today? I can assist with: scheduling an appointment, checking next available times, prescription refills, or office hours and location.`
+        : missingFields.length > 0
+          ? `Hello ${p.firstName ?? "there"}, this is Kyra calling from Kyron Medical. I'm following up on your request. I still need to collect your ${missingFields.join(" and ")}. Let's get that done quickly.`
+          : `Hello ${p.firstName}, this is Kyra calling from Kyron Medical. We've matched you with ${mergedState.matchedDoctor?.name ?? "a specialist"} for your ${p.reason ?? "visit"} concern. I have some available appointment times for you.`;
 
     const vogentResponse = await fetch("https://api.vogent.ai/api/dials", {
       method: "POST",
@@ -81,11 +116,17 @@ export async function POST(req: NextRequest) {
         webhookUrl: `${process.env.NEXT_PUBLIC_BASE_URL ?? req.nextUrl.origin}/api/voice/webhook?sessionId=${sessionId}`,
         callAgentInput: {
           patientName: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
-          specialties: "1. Bone & Joint Pain, 2. Heart & Chest, 3. Headache & Neurology, 4. Stomach & Digestion",
+          specialties: refillFlow ? "" : "1. Bone & Joint Pain, 2. Heart & Chest, 3. Headache & Neurology, 4. Stomach & Digestion",
           context: contextSummary,
           missingFields: missingFields.join(", ") || "none",
-          reason: p.reason ?? "",
-          matchedDoctor: state.matchedDoctor?.name ?? "not yet determined",
+          flow: refillFlow ? "prescription_refill" : "appointment",
+          taskInstructions: refillFlow
+            ? "This call is ONLY for a prescription refill. Do not ask for a reason for visit, appointment reason, specialties, or appointment slots. Use the chat context already provided. Ask only for missing refill details in this order: full name, phone number, prescribing doctor, medication name. Once those are collected, say the refill request will be sent to the care team."
+            : "This call is for appointment scheduling. Collect missing appointment details, match specialty, offer slots, and confirm a selected appointment.",
+          reason: refillFlow ? "" : p.reason ?? "",
+          refillDoctor: mergedState.refillDoctor ?? "",
+          refillMedication: mergedState.refillMedication ?? "",
+          matchedDoctor: mergedState.matchedDoctor?.name ?? "not yet determined",
           allSlots: allSlotsFormatted,
           slots: matchedSlots
             ? matchedSlots.slice(0, 3).map((s, i) => formatSlotForVoice(s, i)).join(", ")
@@ -117,4 +158,18 @@ export async function POST(req: NextRequest) {
     console.error("Voice error:", error);
     return NextResponse.json({ error: "Failed to initiate call" }, { status: 500 });
   }
+}
+
+async function getAllSlotsFormatted(): Promise<string> {
+  const allDoctors = await getAllDoctors();
+  const slotLines = await Promise.all(
+    allDoctors.map(async (doc) => {
+      const slots = await getAvailableSlots(doc.id, 3);
+      const slotStr = slots.length > 0
+        ? slots.map((s, i) => formatSlotForVoice(s, i)).join(", ")
+        : "no slots available";
+      return `${doc.specialty} - ${doc.name}: ${slotStr}`;
+    })
+  );
+  return slotLines.join(" | ");
 }
