@@ -34,6 +34,9 @@ export async function POST(req: NextRequest) {
 
     const p = state?.patient ?? {};
     const missingFields: string[] = [];
+    if (!p.firstName || !p.lastName) missingFields.push("full name");
+    if (!p.dob) missingFields.push("date of birth");
+    if (!p.phone) missingFields.push("phone number");
     if (!p.email) missingFields.push("email address");
     if (!p.reason) missingFields.push("reason for visit");
 

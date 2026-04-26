@@ -46,8 +46,9 @@ export async function POST(req: NextRequest) {
       );
       const available = lines.filter(Boolean);
       reply = available.length > 0
-        ? `Here are the soonest openings we have:\n\n${available.join("\n\n")}\n\nWhich one works for you, or is there a particular specialty you need?`
-        : "I'm sorry, there are no available slots at the moment. Please call us at " + PRACTICE_INFO.phone + " to check availability.";
+        ? `Here are the soonest openings we have:\n\n${available.join("\n\n")}\n\nWhich one works for you, or is there a particular specialty you need? Is there anything else I can help you with?`
+        : "I'm sorry, there are no available slots at the moment. Please call us at " + PRACTICE_INFO.phone + " to check availability. Is there anything else I can help you with?";
+      state.step = "general";
     } else if (state.step === "office_info") {
       reply = `Here's our practice information:\n\n📍 **Address:** ${PRACTICE_INFO.address}\n📞 **Phone:** ${PRACTICE_INFO.phone}\n🕐 **Hours:** ${PRACTICE_INFO.hours}\n\nIs there anything else I can help you with?`;
     } else {
@@ -262,6 +263,7 @@ async function updateState(state: ConversationState, message: string): Promise<C
       break;
     }
 
+    case "booked":
     case "office_info":
     case "refill_submitted":
     case "general": {
@@ -278,7 +280,11 @@ async function updateState(state: ConversationState, message: string): Promise<C
         state.selectedSlot = undefined;
         state.slotOffset = 0;
         state.patient.reason = undefined;
-        state.step = "collect_name";
+        // Skip re-collecting info we already have
+        const p = state.patient;
+        state.step = (p.firstName && p.lastName && p.dob && p.phone && p.email)
+          ? "collect_reason"
+          : "collect_name";
       } else {
         state.step = "general";
       }
