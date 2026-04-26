@@ -150,18 +150,21 @@ export async function POST(req: NextRequest) {
       reply = "I'm sorry, that time is not available. Please choose one of the currently available times, or share another preferred date and time and we'll keep checking.";
       stateWithMeta.preferredTimeNotFound = false;
     } else if (state.step === "next_available") {
-      const nextSlot = await prisma.slot.findFirst({
-        where: { available: true },
-        orderBy: [{ date: "asc" }, { time: "asc" }],
-        include: { doctor: true },
-      });
+      const { getAllDoctors } = await import("@/lib/doctorsDb");
+      const allDoctors = await getAllDoctors();
+      const lines = await Promise.all(
+        allDoctors.map(async (doc) => {
+          const slots = await getAvailableSlots(doc.id, 1);
+          if (slots.length === 0) return null;
+          const { formatDisplay } = await import("@/lib/dateUtils");
+          return `**${formatDisplay(slots[0].date, slots[0].time)}** with ${doc.name} (${doc.specialty})`;
+        })
+      );
+      const available = lines.filter(Boolean);
       const menu = `\n\nIs there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location`;
-      if (nextSlot) {
-        const { formatDisplay } = await import("@/lib/dateUtils");
-        reply = `The next available appointment is **${formatDisplay(nextSlot.date, nextSlot.time)}** with ${nextSlot.doctor.name} (${nextSlot.doctor.specialty}).${menu}`;
-      } else {
-        reply = `I'm sorry, there are no available slots at the moment. Please call us at ${PRACTICE_INFO.phone} to check availability.${menu}`;
-      }
+      reply = available.length > 0
+        ? `Here are the soonest openings for each doctor:\n\n${available.join("\n\n")}${menu}`
+        : `I'm sorry, there are no available slots at the moment. Please call us at ${PRACTICE_INFO.phone} to check availability.${menu}`;
       state.step = "general";
     } else if (state.step === "office_info") {
       const menu = `\n\nIs there anything else I can help you with?\n1. Schedule an appointment\n2. Check next available appointment\n3. Request a prescription refill\n4. Office hours & location`;
