@@ -153,8 +153,13 @@ export async function POST(req: NextRequest) {
       }));
       aiMessages.push({ role: "user", content: message });
       const offset = state.slotOffset ?? 0;
-      const slots = state.matchedDoctor ? await getAvailableSlots(state.matchedDoctor.id, offset + 3) : undefined;
-      const visibleSlots = slots ? slots.slice(offset) : undefined;
+      const shouldExposeSlots = state.step === "show_slots" || state.step === "request_preferred_time";
+      const slots = shouldExposeSlots && state.matchedDoctor
+        ? await getAvailableSlots(state.matchedDoctor.id, state.step === "request_preferred_time" ? 60 : offset + 3)
+        : undefined;
+      const visibleSlots = slots
+        ? state.step === "request_preferred_time" ? slots : slots.slice(offset)
+        : undefined;
       const systemPrompt = buildSystemPrompt(state, visibleSlots);
       reply = await callAI(model, aiMessages, systemPrompt);
     }
@@ -171,7 +176,8 @@ export async function POST(req: NextRequest) {
 
     const slotOff = state.slotOffset ?? 0;
     const isPreferredStep = state.step === "request_preferred_time";
-    const allFetched = state.matchedDoctor
+    const shouldReturnSlots = state.step === "show_slots" || isPreferredStep;
+    const allFetched = shouldReturnSlots && state.matchedDoctor
       ? await getAvailableSlots(state.matchedDoctor.id, isPreferredStep ? 60 : slotOff + 3)
       : undefined;
     const availableSlots = allFetched ? (isPreferredStep ? allFetched : allFetched.slice(slotOff)) : undefined;
